@@ -94,6 +94,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.NEXTAUTH_SECRET,
 })
 
+// Export for compatibility with v4 pattern
+export const authOptions = {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+}
+
 declare module 'next-auth' {
   interface Session {
     user: {

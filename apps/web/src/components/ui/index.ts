@@ -1,5 +1,6 @@
 export { Button, buttonVariants } from './button'
 export { Input } from './input'
+export { Textarea } from './textarea'
 export { Label } from './label'
 export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './card'
 export { Dialog, DialogPortal, DialogOverlay, DialogClose, DialogTrigger, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from './dialog'
@@ -15,3 +16,4 @@ export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './tool
 export { Separator } from './separator'
 export { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarInset, SidebarTrigger } from './sidebar'
 export { KPICard } from './kpi-card'
+export { Switch } from './switch'

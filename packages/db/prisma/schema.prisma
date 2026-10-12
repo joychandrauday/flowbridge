@@ -115,7 +115,9 @@ model Form {
   workspaceId   String
   key           String   @unique
   name          String
+  description   String?
   fields        Json     // Array of { name, label, type, required, options?, placeholder? }
+  settings      Json?    // Form settings (honeypot, rateLimit, etc.)
   successMessage String?
   redirectUrl   String?
   active        Boolean  @default(true)
