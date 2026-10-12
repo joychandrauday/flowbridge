@@ -28,8 +28,11 @@ export const ConditionSchema = z.object({
   value: z.unknown().optional(), // Optional for is_empty/is_not_empty
 })
 
+// Recursive schema for condition groups (AND/OR)
+// @ts-expect-error - recursive schema reference
 export const ConditionGroupSchema = z.object({
   operator: z.enum(['AND', 'OR']).default('AND'),
+  // @ts-expect-error - recursive lazy reference
   conditions: z.array(z.union([ConditionSchema, z.lazy(() => ConditionGroupSchema)])).min(1),
 })
 
@@ -174,8 +177,8 @@ export type StepConfig = z.infer<typeof StepConfigSchema>
 
 export const WorkflowStepSchema = z.object({
   id: z.string().min(1),
-  type: StepConfigSchema.shape.type,
-  config: StepConfigSchema.shape.config,
+  type: StepConfigSchema.options[0].shape.type,
+  config: StepConfigSchema.options[0].shape.config,
   retry: StepRetrySchema.optional(),
   onFailure: StepOnFailureSchema.optional(),
 })

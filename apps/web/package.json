@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "db:generate": "prisma generate --schema=../db/prisma/schema.prisma"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@flowbridge/core": "workspace:*",
@@ -54,6 +53,8 @@
     "@types/nodemailer": "^6.4.14",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.55.0",
     "eslint-config-next": "14.0.4",
