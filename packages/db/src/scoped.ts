@@ -1,14 +1,18 @@
-import { PrismaClient, Prisma } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
+import { prisma } from './client'
 
-export type ScopedPrisma = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'> & {
-  $transaction: <T>(fn: (prisma: ScopedPrisma) => Promise<T>, options?: { maxWait?: number; timeout?: number }) => Promise<T>
+type ScopedClient = PrismaClient & {
+  $transaction: <T>(
+    fn: (prisma: ReturnType<typeof scoped>) => Promise<T>,
+    options?: { maxWait?: number; timeout?: number }
+  ) => Promise<T>
 }
 
 /**
  * Creates a scoped Prisma client that automatically filters all queries by workspaceId.
  * This ensures tenant isolation at the database level.
  */
-export function scoped(prisma: PrismaClient, workspaceId: string): ScopedPrisma {
+export function scoped(prisma: PrismaClient, workspaceId: string): ScopedClient {
   const models = [
     'member',
     'form',
@@ -23,11 +27,10 @@ export function scoped(prisma: PrismaClient, workspaceId: string): ScopedPrisma 
     'apiKey',
   ] as const
 
-  const scopedClient = {} as ScopedPrisma
+  const scopedClient = {} as Record<string, any>
 
   for (const model of models) {
-    // @ts-expect-error - dynamic model access
-    const delegate = prisma[model]
+    const delegate = prisma[model as keyof typeof prisma]
 
     if (!delegate) continue
 
@@ -89,19 +92,23 @@ export function scoped(prisma: PrismaClient, workspaceId: string): ScopedPrisma 
       },
     }
 
-    // @ts-expect-error - dynamic assignment
     scopedClient[model] = new Proxy(delegate, handler)
   }
 
   // Handle $transaction
   scopedClient.$transaction = async <T>(
-    fn: (prisma: ScopedPrisma) => Promise<T>,
+    fn: (prisma: ReturnType<typeof scoped>) => Promise<T>,
     options?: { maxWait?: number; timeout?: number }
   ) => {
-    return prisma.$transaction(async (tx) => fn(scoped(tx, workspaceId)), options)
+    return prisma.$transaction(async (tx) => fn(scoped(tx as PrismaClient, workspaceId)), options)
   }
 
-  return scopedClient
+  return scopedClient as PrismaClient & {
+    $transaction: <T>(
+      fn: (prisma: ReturnType<typeof scoped>) => Promise<T>,
+      options?: { maxWait?: number; timeout?: number }
+    ) => Promise<T>
+  }
 }
 
 /**
