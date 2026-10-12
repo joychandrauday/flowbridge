@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@flowbridge/db": ["packages/db/src"],
+      "@flowbridge/core": ["packages/core/src"],
+      "@flowbridge/ui": ["packages/ui/src"]
+    }
+  },
+  "exclude": ["node_modules", "**/dist", "**/.next"]
+}

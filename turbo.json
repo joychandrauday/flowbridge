@@ -1,0 +1,36 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": []
+    },
+    "typecheck": {
+      "outputs": []
+    },
+    "test": {
+      "outputs": ["coverage/**"],
+      "dependsOn": []
+    },
+    "db:generate": {
+      "outputs": ["node_modules/.prisma/**"]
+    },
+    "db:migrate": {
+      "dependsOn": ["db:generate"]
+    },
+    "db:seed": {
+      "dependsOn": ["db:migrate"]
+    },
+    "db:studio": {
+      "cache": false
+    }
+  },
+  "globalEnv": ["DATABASE_URL", "ENCRYPTION_KEY", "CRON_SECRET", "NEXTAUTH_SECRET"]
+}
