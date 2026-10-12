@@ -70,25 +70,25 @@ async function main() {
   console.log('✅ Users created')
 
   // Create members
-  await prisma.member.upsert({
+  const ownerMember = await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: owner.id } },
     update: { role: 'OWNER', available: true },
     create: { workspaceId: workspace.id, userId: owner.id, role: 'OWNER', available: true },
   })
 
-  await prisma.member.upsert({
+  const adminMember = await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: admin.id } },
     update: { role: 'ADMIN', available: true },
     create: { workspaceId: workspace.id, userId: admin.id, role: 'ADMIN', available: true },
   })
 
-  await prisma.member.upsert({
+  const agent1Member = await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: agent1.id } },
     update: { role: 'AGENT', available: true, skills: ['english', 'spanish'] },
     create: { workspaceId: workspace.id, userId: agent1.id, role: 'AGENT', available: true, skills: ['english', 'spanish'] },
   })
 
-  await prisma.member.upsert({
+  const agent2Member = await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: agent2.id } },
     update: { role: 'AGENT', available: true, skills: ['english', 'french'] },
     create: { workspaceId: workspace.id, userId: agent2.id, role: 'AGENT', available: true, skills: ['english', 'french'] },
@@ -233,15 +233,16 @@ async function main() {
   ]
 
   for (const leadData of leadsData) {
+    const { company, ...leadFields } = leadData
     const lead = await prisma.lead.upsert({
-      where: { email: leadData.email },
+      where: { email: leadFields.email },
       update: {},
       create: {
         workspaceId: workspace.id,
-        ...leadData,
-        data: { company: leadData.company, utm_source: leadData.source },
-        assigneeId: leadData.status === 'NEW' ? null : agent1.id,
-        firstContactedAt: leadData.status !== 'NEW' ? new Date() : null,
+        ...leadFields,
+        data: { company, utm_source: leadFields.source },
+        assigneeId: leadFields.status === 'NEW' ? null : agent1Member.id,
+        firstContactedAt: leadFields.status !== 'NEW' ? new Date() : null,
         lastActivityAt: new Date(),
       },
     })
@@ -249,10 +250,11 @@ async function main() {
     // Create activity
     await prisma.activity.create({
       data: {
+        workspaceId: workspace.id,
         leadId: lead.id,
         type: 'lead_created',
-        body: `Lead created from ${leadData.source}`,
-        meta: { source: leadData.source },
+        body: `Lead created from ${leadFields.source}`,
+        meta: { source: leadFields.source },
       },
     })
   }
@@ -260,25 +262,28 @@ async function main() {
   console.log('✅ Demo leads created')
 
   // Create demo tasks
+  const mchenLead = await prisma.lead.findFirst({ where: { email: 'mchen@growth.co' } })
+  const emilyLead = await prisma.lead.findFirst({ where: { email: 'emily@innovate.io' } })
+
   await prisma.task.createMany({
     data: [
       {
         workspaceId: workspace.id,
-        leadId: (await prisma.lead.findFirst({ where: { email: 'mchen@growth.co' } }))?.id,
+        leadId: mchenLead?.id,
         title: 'Follow up with Michael Chen',
         description: 'Discuss enterprise plan options',
         dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         status: 'OPEN',
-        assigneeId: agent1.id,
+        assigneeId: agent1Member.id,
       },
       {
         workspaceId: workspace.id,
-        leadId: (await prisma.lead.findFirst({ where: { email: 'emily@innovate.io' } }))?.id,
+        leadId: emilyLead?.id,
         title: 'Send proposal to Emily Rodriguez',
         description: 'Custom pricing for 50 seats',
         dueAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
         status: 'OPEN',
-        assigneeId: agent1.id,
+        assigneeId: agent1Member.id,
       },
       {
         workspaceId: workspace.id,
@@ -286,7 +291,7 @@ async function main() {
         description: 'Document new workflow patterns',
         dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         status: 'OPEN',
-        assigneeId: admin.id,
+        assigneeId: adminMember.id,
       },
     ],
     skipDuplicates: true,

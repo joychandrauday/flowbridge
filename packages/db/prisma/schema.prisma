@@ -100,8 +100,10 @@ model Member {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedLeads Lead[]   @relation("LeadAssignee")
+  assignedTasks Task[]   @relation("TaskAssignee")
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
@@ -162,7 +164,7 @@ model Lead {
   updatedAt        DateTime    @updatedAt
 
   workspace        Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  assignee         Member?     @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignee         Member?     @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   activities       Activity[]
   tasks            Task[]
   workflowRuns     WorkflowRun[]
@@ -176,6 +178,7 @@ model Lead {
 
 model Activity {
   id        String   @id @default(cuid())
+  workspaceId String
   leadId    String
   type      String   // "status_change", "assignment", "note", "workflow_run", "email_sent", "task_created", etc.
   body      String?
@@ -183,8 +186,10 @@ model Activity {
   actorId   String?  // Member ID who performed the action
   createdAt DateTime @default(now())
 
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId, createdAt])
   @@index([leadId, createdAt])
 }
 
@@ -204,7 +209,7 @@ model Task {
 
   workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   lead           Lead?       @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  assignee       Member?     @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignee       Member?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, status])
   @@index([workspaceId, assigneeId])
@@ -232,6 +237,7 @@ model Workflow {
 
 model WorkflowRun {
   id              String     @id @default(cuid())
+  workspaceId     String
   workflowId      String
   workflowVersion Int
   eventId         String     // IntakeEvent ID or manual trigger ID
@@ -243,11 +249,13 @@ model WorkflowRun {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   workflow        Workflow   @relation(fields: [workflowId], references: [id], onDelete: Cascade)
   lead            Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
   steps           RunStep[]
 
   @@unique([workflowId, eventId])
+  @@index([workspaceId, status])
   @@index([workflowId, status])
   @@index([leadId])
   @@index([createdAt])
