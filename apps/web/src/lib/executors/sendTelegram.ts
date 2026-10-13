@@ -42,13 +42,13 @@ export const sendTelegramExecutor: StepExecutor = {
           where: { id: lead.assigneeId },
           include: { user: true },
         })
-        targetChatId = (assignee?.user as { telegramChatId?: string | null } | undefined)?.telegramChatId ?? undefined
+        targetChatId = assignee?.user.telegramChatId ?? undefined
       } else {
         const member = await prisma.member.findFirst({
           where: { workspaceId: workspace.id, role: sendToRole as 'OWNER' | 'ADMIN' | 'AGENT' },
           include: { user: true },
         })
-        targetChatId = (member?.user as { telegramChatId?: string | null } | undefined)?.telegramChatId ?? undefined
+        targetChatId = member?.user.telegramChatId ?? undefined
       }
     }
 
