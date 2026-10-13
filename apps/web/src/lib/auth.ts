@@ -74,6 +74,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.role = member?.role
         }
       }
+      // Self-heal sessions: users who onboard after login get their workspace
+      // membership on the next request instead of being stuck on /onboarding.
+      if (!token.workspaceId && token.id) {
+        const member = await prisma.member.findFirst({
+          where: { userId: token.id as string },
+          include: { workspace: true },
+        })
+        if (member) {
+          token.workspaceId = member.workspaceId
+          token.workspaceSlug = member.workspace.slug
+          token.role = member.role
+        }
+      }
       return token
     },
     async session({ session, token }) {
