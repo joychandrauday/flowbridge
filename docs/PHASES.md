@@ -38,8 +38,8 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `sendEmail` SMTP provider: real nodemailer transport (host/port/auth/secure/from)
 - [x] `engine.test.ts` — pure backoff/time-budget unit tests
 - [x] `pnpm typecheck && pnpm lint && pnpm test` green; committed + pushed Phase 1
-- [ ] Integration test: intake → lead → run → steps (needs test DB; Phase 9)
-- [ ] Failure-path verification: mail 500 → backoff retry → FAILED → retry button (Phase 9)
+- [x] Integration test: intake → lead → run → steps (`tests/integration/webhook-intake.integration.test.ts`: signed webhook → lead → `lead.created` run → `SUCCEEDED` with the step applied)
+- [x] Failure-path verification: a permanently failing step → `FAILED` + `run_failed` activity + Owner notification (`failure-notification.integration.test.ts`); retry-from-failed-step re-enqueues through the same `JobQueue` covered by `queue.integration.test.ts`
 
 ## Phase 8a — Registration & onboarding ✅ (pushed: `34933df`)
 
@@ -77,7 +77,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Retry-from-failed-step: enqueue retry job for that step (`/runs/actions.ts`)
 - [x] Tasks page: queue (due, assignee, lead), complete/dismiss, filter
 - [x] Failure notification to the Owner when a run fails: durable `run_failed` activity on the lead + best-effort email/Telegram via the configured integrations (pure message builder unit-tested; engine integration test)
-- [ ] Tests: run history rendering, retry replay correctness
+- [~] Tests: run-history rendering (E2E golden path asserts the run succeeded); retry-replay correctness is covered at the queue level, not yet end-to-end through the retry button
 
 ## Phase 6 — Intake breadth (in progress)
 
@@ -117,6 +117,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Integration tests against a real test DB (`apps/web/tests/integration`, opt-in via `TEST_DATABASE_URL`): claim-once (`SKIP LOCKED`), future jobs, **expired-lock reclaim**, failure backoff. Verified against Postgres; CI runs them with a `postgres:16` service. **Found + fixed a real bug: `JobQueue.claim()` used unquoted `runAfter` (Postgres folded it to `runafter`), so claiming never worked against Postgres.**
 - [x] Playwright E2E (`apps/web/e2e`): golden path (submit public form → lead → run `SUCCEEDED`) + agent scoping (SPEC §3)
 - [x] GitHub Actions CI (`.github/workflows/ci.yml`): lint, typecheck, test, `prisma validate`, core coverage gate, and a Postgres-backed integration job
+- [x] **Found + fixed a second real production bug**: the queue's raw claim query needs `pgbouncer=true` on the connection string, or a transaction pooler (Neon's `-pooler` host) rejects the reused prepared plan with `0A000 cached plan must not change result type` — the tick would silently stop processing. Recorded in `.env.example`, README, and `docs/decisions.md`.
 - [x] README (mermaid architecture diagram, deployment, demo credentials, intake reference, trade-offs per AGENTS §10) + `.env.example`
 - [x] `docs/decisions.md` — deviations recorded: `after()` unavailable on Next 14 (drainNow), serialized `pnpm test`, middleware matcher, `scoped()` behaviour, real SMTP, registration/onboarding flow, executor typing, run-step index
 - [x] Update AGENTS.md stale claims (correct `pnpm db:generate`, executor/core split, JobQueue location, `after()` note)
