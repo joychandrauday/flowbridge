@@ -1,6 +1,8 @@
 import { prisma } from './client'
 import { hash } from 'bcryptjs'
+import { Prisma } from '@prisma/client'
 import { deriveEncryptionKey, encryptJsonWithKey, isEncryptedPayload } from '@flowbridge/core'
+import { DEMO_WORKFLOWS } from './demo-workflows'
 
 /**
  * Encrypt integration configs for storage (SPEC.md §3).
@@ -134,108 +136,25 @@ async function main() {
 
   console.log('✅ Form created:', form.name)
 
-  // Create demo workflow: Instant Lead Assignment
-  const instantAssignmentWorkflow = await prisma.workflow.upsert({
-    where: { id: 'wf_instant_assignment' },
-    update: {},
-    create: {
-      id: 'wf_instant_assignment',
-      workspaceId: workspace.id,
-      name: 'Instant Lead Assignment',
-      description: 'Assign new lead round-robin, create task, send Telegram notification',
-      enabled: true,
-      version: 1,
-      definition: {
-        trigger: { type: 'lead.created', config: {} },
-        conditions: [],
-        steps: [
-          {
-            id: 'step_assign',
-            type: 'assign',
-            config: { strategy: 'round_robin' },
-            retry: { maxAttempts: 3, backoff: 'exponential' },
-            onFailure: 'stop',
-          },
-          {
-            id: 'step_task',
-            type: 'create_task',
-            config: {
-              title: 'Contact new lead: {{lead.name}}',
-              description: 'Lead source: {{lead.source}}\nEmail: {{lead.email}}\nPhone: {{lead.phone}}',
-              dueInMinutes: 60,
-            },
-            retry: { maxAttempts: 3, backoff: 'exponential' },
-            onFailure: 'continue',
-          },
-          {
-            id: 'step_telegram',
-            type: 'send_telegram',
-            config: {
-              message: '🎯 New lead assigned to you!\n\n*{{lead.name}}* ({{lead.email}})\nSource: {{lead.source}}\n\n[View Lead]({{lead.url}})',
-              parseMode: 'Markdown',
-            },
-            retry: { maxAttempts: 3, backoff: 'exponential' },
-            onFailure: 'continue',
-          },
-        ],
+  // Create demo workflows (definitions live in demo-workflows.ts so the
+  // schema-drift test can validate them without touching the DB).
+  for (const workflow of DEMO_WORKFLOWS) {
+    const created = await prisma.workflow.upsert({
+      where: { id: workflow.id },
+      update: {},
+      create: {
+        id: workflow.id,
+        workspaceId: workspace.id,
+        name: workflow.name,
+        description: workflow.description,
+        enabled: true,
+        version: 1,
+        definition: workflow.definition as Prisma.InputJsonValue,
       },
-    },
-  })
+    })
 
-  console.log('✅ Workflow created:', instantAssignmentWorkflow.name)
-
-  // Create demo workflow: Follow-up Escalation
-  const followupWorkflow = await prisma.workflow.upsert({
-    where: { id: 'wf_followup_escalation' },
-    update: {},
-    create: {
-      id: 'wf_followup_escalation',
-      workspaceId: workspace.id,
-      name: 'Follow-up Escalation (24h)',
-      description: 'If lead still NEW after 24h, notify admin and create urgent task',
-      enabled: true,
-      version: 1,
-      definition: {
-        trigger: { type: 'lead.no_activity_for', config: { minutes: 1 } }, // 1 min for testing, 1440 for 24h
-        conditions: [
-          {
-            operator: 'AND',
-            conditions: [
-              { field: 'lead.status', operator: 'equals', value: 'NEW' },
-            ],
-          },
-        ],
-        steps: [
-          {
-            id: 'step_escalate_task',
-            type: 'create_task',
-            config: {
-              title: 'URGENT: Follow up on {{lead.name}} (no activity 24h)',
-              description: 'Lead has been NEW for 24 hours without contact.\nEmail: {{lead.email}}\nPhone: {{lead.phone}}',
-              dueInMinutes: 30,
-              assigneeStrategy: 'role',
-              assigneeRole: 'ADMIN',
-            },
-            retry: { maxAttempts: 3, backoff: 'exponential' },
-            onFailure: 'continue',
-          },
-          {
-            id: 'step_escalate_telegram',
-            type: 'send_telegram',
-            config: {
-              message: '⚠️ *ESCALATION*: Lead {{lead.name}} has had no activity for 24h!\n\nPlease follow up immediately.\n[View Lead]({{lead.url}})',
-              parseMode: 'Markdown',
-              sendToRole: 'ADMIN',
-            },
-            retry: { maxAttempts: 3, backoff: 'exponential' },
-            onFailure: 'continue',
-          },
-        ],
-      },
-    },
-  })
-
-  console.log('✅ Workflow created:', followupWorkflow.name)
+    console.log('✅ Workflow created:', created.name)
+  }
 
   // Create demo leads
   const leadsData = [
