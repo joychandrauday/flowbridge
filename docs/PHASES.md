@@ -99,15 +99,17 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Follow-up escalation demo workflow: fixed invalid `create_task` config (`assigneeRole` → `role`) that made it fail `.strict()` parsing; extracted to `demo-workflows.ts` + schema-drift test
 - [ ] Short-delay integration test (1-minute delay standing in for 24h) against a real test DB — deferred to Phase 9
 
-## Phase 8 — Settings & hardening
+## Phase 8 — Settings & hardening (in progress)
 
 - [x] `/register` page + `/api/register` (done: API + page) — onboarding flow
 - [x] `/onboarding` page + `/api/onboarding` (done: API + page)
-- [ ] Workspace settings: members, roles, availability, workspace slug/name
-- [ ] API keys page (create/revoke, last used)
-- [ ] Deep-clean: remove unused imports/lint warnings, `no-explicit-any` audit in app code
-- [ ] SSRF guard: cap response size, re-check after redirect (partial exists — verify)
-- [ ] `scoped()` unit test proving cross-tenant access impossible (exists — extend for findUnique fix)
+- [x] Workspace settings: name/slug edit, webhook endpoint + secret rotation (owners/admins only)
+- [x] Members: role change (owners) + availability toggle (drives round-robin/`role` assignment)
+- [x] API keys page: create (hashed at rest, shown once), revoke, scope picker, last-used column
+- [ ] API-key authentication on a real endpoint (keys are managed but no route consumes them yet)
+- [~] Deep-clean: scoped.ts `any`s removed (db 10→3 warnings); FormBuilder / forms pages / layout icons remain
+- [x] SSRF guard: pure `packages/core/src/ssrf.ts` (v4/v6, CGNAT, IPv4-mapped, metadata, 6to4/NAT64) + 46 tests; executor resolves every redirect hop, caps body size
+- [x] `scoped()` unit tests proving cross-tenant read/write is impossible (findUnique rewritten to findFirst; upsert create scoped)
 
 ## Phase 9 — Tests / CI / Docs
 
