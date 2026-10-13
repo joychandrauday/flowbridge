@@ -16,6 +16,7 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
   let workspaceId: string
   const slug = `webhook-${Date.now()}`
   const secret = 'test-webhook-secret'
+  const sharedEmail = `grace-${Date.now()}@example.com`
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DB
@@ -56,8 +57,7 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
   })
 
   it('accepts a correctly signed payload and creates a scoped lead', async () => {
-    const email = `grace-${Date.now()}@example.com`
-    const raw = JSON.stringify({ name: 'Grace Hopper', email })
+    const raw = JSON.stringify({ name: 'Grace Hopper', email: sharedEmail })
     const signature = `sha256=${signPayload(raw, secret)}`
 
     const response = await post(raw, signature)
@@ -69,7 +69,20 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id: json.leadId } })
     expect(lead.workspaceId).toBe(workspaceId)
     expect(lead.name).toBe('Grace Hopper')
-    expect(lead.email).toBe(email)
+    expect(lead.email).toBe(sharedEmail)
     expect(lead.source).toBe('stripe')
+  })
+
+  it('deduplicates a repeated email instead of failing (200)', async () => {
+    const raw = JSON.stringify({ name: 'Grace Hopper', email: sharedEmail })
+    const signature = `sha256=${signPayload(raw, secret)}`
+
+    const response = await post(raw, signature)
+    expect(response.status).toBe(200)
+
+    const json = (await response.json()) as { success: boolean; duplicate: boolean }
+    expect(json).toEqual({ success: true, duplicate: true })
+
+    expect(await prisma.lead.count({ where: { email: sharedEmail } })).toBe(1)
   })
 })
