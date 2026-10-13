@@ -4,12 +4,15 @@ import { auth } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@flowbridge/db'
 import { LeadStatus } from '@prisma/client'
+import { JobQueue } from '@/lib/queue'
+import { createRunsForLeadStatusChange, drainNow } from '@/lib/engine'
 
 const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST']
 
 /**
  * Update a lead's status (form-action server action; runs on the server only,
- * never trusts a client-supplied workspaceId).
+ * never trusts a client-supplied workspaceId). Bumps `lastActivityAt` and
+ * triggers matching `lead.status_changed` workflows in the same transaction.
  */
 export async function updateLeadStatus(formData: FormData) {
   const session = await auth()
@@ -23,19 +26,22 @@ export async function updateLeadStatus(formData: FormData) {
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
   if (!lead) return
+  if (lead.status === status) return // no-op change
 
   const actor = await prisma.member.findFirst({ where: { userId: session.user.id, workspaceId } })
+  const queue = new JobQueue(prisma, `worker-status-${Date.now()}`)
 
-  await prisma.$transaction([
-    prisma.lead.update({
+  await prisma.$transaction(async (tx) => {
+    await tx.lead.update({
       where: { id: lead.id },
       data: {
         status: status as LeadStatus,
         // First contact is implicit once someone works the lead
         firstContactedAt: lead.firstContactedAt ?? (status === 'NEW' ? null : new Date()),
+        lastActivityAt: new Date(),
       },
-    }),
-    prisma.activity.create({
+    })
+    const activity = await tx.activity.create({
       data: {
         workspaceId,
         leadId: lead.id,
@@ -43,11 +49,23 @@ export async function updateLeadStatus(formData: FormData) {
         body: `Status changed to ${status}`,
         actorId: actor?.id ?? null,
       },
-    }),
-  ])
+    })
+    // Use the activity id as the event id: unique per change, so runs are
+    // idempotent while still firing once for each transition.
+    await createRunsForLeadStatusChange(tx, queue, {
+      workspaceId,
+      leadId: lead.id,
+      eventId: `statuschange:${activity.id}`,
+      from: lead.status,
+      to: status,
+    })
+  })
+
+  drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
 
   revalidatePath(`/leads/${lead.id}`)
   revalidatePath('/leads')
+  revalidatePath('/runs')
   revalidatePath('/dashboard')
 }
 
@@ -66,15 +84,18 @@ export async function addLeadNote(formData: FormData) {
 
   const actor = await prisma.member.findFirst({ where: { userId: session.user.id, workspaceId } })
 
-  await prisma.activity.create({
-    data: {
-      workspaceId,
-      leadId: lead.id,
-      type: 'note',
-      body: body.trim(),
-      actorId: actor?.id ?? null,
-    },
-  })
+  await prisma.$transaction([
+    prisma.lead.update({ where: { id: lead.id }, data: { lastActivityAt: new Date() } }),
+    prisma.activity.create({
+      data: {
+        workspaceId,
+        leadId: lead.id,
+        type: 'note',
+        body: body.trim(),
+        actorId: actor?.id ?? null,
+      },
+    }),
+  ])
 
   revalidatePath(`/leads/${lead.id}`)
   revalidatePath('/leads')
@@ -106,7 +127,7 @@ export async function updateLeadAssignee(formData: FormData) {
     : null
 
   await prisma.$transaction([
-    prisma.lead.update({ where: { id: lead.id }, data: { assigneeId } }),
+    prisma.lead.update({ where: { id: lead.id }, data: { assigneeId, lastActivityAt: new Date() } }),
     prisma.activity.create({
       data: {
         workspaceId,
