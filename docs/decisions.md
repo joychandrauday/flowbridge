@@ -134,6 +134,27 @@ its own transaction (`IntakeEvent` + `Lead` + runs + jobs), with an email
 pre-check and a `P2002` catch for races. A bad row is reported in the summary
 and skipped; good rows commit. Caps: 500KB file, 2000 rows, 20 reported errors.
 
+The client now parses the file, shows a **column-mapping UI** and a preview of
+the first 10 rows, then posts `{ csvText, mapping }`. Mapping is done by pure
+`applyMapping`/`guessMapping` helpers (unit-tested) so the lead fields and the
+CSV columns cannot drift.
+
+### Dedupe is by email then phone, with no per-workspace toggle
+
+The SPEC stretch list mentions a "dedupe by email setting". **Decision:** dedupe
+is always on — email first (`Lead.email` is globally unique), then phone when no
+email matched — and is *not* configurable yet. A toggle would need a settings UI
+and a "force import anyway" escape hatch, which is follow-up scope. Recorded here
+so the behaviour is deliberate rather than accidental.
+
+### `pnpm db:seed` is idempotent
+
+Re-seeding must be safe because the schema/seed change over time and the tracker
+says to re-run it. The seed upserts workspace/users/members/form/workflow/leads/
+integration, and now guards the two non-upsertable writes: the `lead_created`
+activity (skip if one exists) and demo tasks (only create when the workspace has
+none). Re-running adds nothing.
+
 ### Webhook HMAC is optional-but-enforced-when-configured
 
 `SPEC.md` §9 calls the signature "optional but supported". **Decision:** if

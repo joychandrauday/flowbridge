@@ -17,7 +17,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Seed: `sealConfig()` (encrypted integration config via `@flowbridge/core`), follow-up condition `lead.status`, demo workflows
 - [x] `packages/db/tsconfig.json` — remove `rootDir` so `@flowbridge/core` imports typecheck
 - [x] Commit + push Phase 0
-- [ ] `pnpm db:seed` to refresh demo data with encrypted config
+- [x] `pnpm db:seed` re-run against the demo DB (verified idempotent: counts unchanged on the second run) with encrypted integration config
 
 ## Phase 1 — Engine loop ✅ (pushed: `0b85e53`)
 
@@ -57,7 +57,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Leads page: table (server-side pagination/sort/filter), saved filters
 - [x] Lead detail view: timeline (intake, activity, status changes), data JSON, tasks
 - [x] Lead update field/status actions + activity logging (server actions: `updateLeadStatus`, `updateLeadAssignee`, `addLeadNote`)
-- [x] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs; per-row transactions, email dedupe, 500KB/2000-row caps) + `/leads/import` UI + pure `parseCsv` tests (8)
+- [x] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs; per-row transactions, dedupe by email/phone, 500KB/2000-row caps), **column-mapping UI + first-10-row preview + import report** (`parseCsv`/`rowsToRecords`/`applyMapping`/`guessMapping` are pure and unit-tested)
 - [x] Scoped-query audit: every dashboard/route tenant query is either `scoped()` or carries `workspaceId`; by-id mutations are always preceded by a scoped read (audited all `update`/`delete`/`findUnique` sites)
 - [x] Tests: cross-tenant isolation on tenant tables (the `scoped()` suite in Phase 8 proves read/write isolation); duplicate-email idempotency on the webhook intake path (integration)
 
@@ -86,7 +86,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Embeddable form: `/embed/[formKey]` iframe page + `/embed.js` loader + "Copy Embed Code" in the forms table (SPEC §2/§3)
 - [x] Middleware: `/f/` public; `/embed`, `/api/webhooks` already public
 - [x] Webhook: workspace-by-slug, per-IP rate limit, 100KB cap, zod payload (passthrough), P2002 → dedupe 200
-- [ ] Multi-form support / field-to-lead mapping, dedupe by email setting
+- [x] Multi-form support (each `Form` has a unique `key` → `/f/[formKey]`) and field-to-lead mapping (CSV import column mapper; unmapped columns kept in `Lead.data`). Dedupe is always on by email (global unique) then phone — no toggle (see `docs/decisions.md`).
 - [x] Honeypot + per-IP/per-form rate limiting on intake (extracted to testable `lib/rate-limit.ts`, shared with the webhook route; unit-tested)
 - [x] Tests: HMAC failure/success (core), webhook route integration (valid signature creates a lead; bad signature 401), embed render (E2E golden path covers `/f/`)
 
@@ -126,7 +126,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
 ## Cross-cutting
 
-- [ ] `pnpm typecheck && pnpm lint && pnpm test` green after **every** phase
-- [ ] One commit per concern; push after each phase completes
-- [ ] Demoable golden path in under 2 minutes from seeded workspace (cutoff: before Phase 1 push)
-- [ ] `pnpm db:seed` re-run whenever schema/seed changes
+- [x] `pnpm typecheck && pnpm lint && pnpm test` green after **every** phase (verified before each push)
+- [x] One commit per concern; push after each phase completes
+- [x] Demoable golden path from the seeded workspace — covered by `apps/web/e2e/golden-path.spec.ts` (sign up → form → lead → run succeeded → agent scope); the seed was re-verified here. Running Playwright itself needs browsers installed + `pnpm dev`.
+- [x] `pnpm db:seed` is safe to re-run whenever schema/seed changes (all writes upsert or guarded)
