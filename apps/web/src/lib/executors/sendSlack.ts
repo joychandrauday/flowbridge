@@ -69,15 +69,17 @@ export const sendSlackExecutor: StepExecutor = {
         return { success: false, error: data.error || 'Slack API error' }
       }
 
-      await prisma.activity.create({
-        data: {
-          workspaceId: workspace.id,
-          leadId: lead.id,
-          type: 'slack_sent',
-          body: `Slack message sent to ${targetChannel}`,
-          meta: { channel: targetChannel, ts: data.ts },
-        },
-      })
+      if (lead) {
+        await prisma.activity.create({
+          data: {
+            workspaceId: workspace.id,
+            leadId: lead.id,
+            type: 'slack_sent',
+            body: `Slack message sent to ${targetChannel}`,
+            meta: { channel: targetChannel, ts: data.ts },
+          },
+        })
+      }
 
       return { success: true, output: { ts: data.ts, channel: targetChannel } }
     } catch (error) {

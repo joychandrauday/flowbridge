@@ -40,7 +40,7 @@ export const sendEmailExecutor: StepExecutor = {
     }
 
     const renderedSubject = renderTemplateValue(subject, templateContext)
-    const renderedTo = to ? renderTemplateValue(to, templateContext) : lead.email
+    const renderedTo = to ? renderTemplateValue(to, templateContext) : lead?.email
     const renderedHtml = html ? renderTemplateValue(html, templateContext) : undefined
     const renderedText = text ? renderTemplateValue(text, templateContext) : undefined
     const renderedCc = cc?.map((c) => renderTemplateValue(c, templateContext))
@@ -95,7 +95,7 @@ export const sendEmailExecutor: StepExecutor = {
         })
         const info = await transporter.sendMail({
           from,
-          to: renderedTo,
+          to: renderedTo ?? undefined,
           cc: renderedCc,
           bcc: renderedBcc,
           subject: renderedSubject,
@@ -108,7 +108,7 @@ export const sendEmailExecutor: StepExecutor = {
         result = { success: true, messageId: 'log-' + Date.now() }
       }
 
-      if (result.success) {
+      if (result.success && lead) {
         await prisma.activity.create({
           data: {
             workspaceId: workspace.id,

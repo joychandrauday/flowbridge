@@ -1,5 +1,4 @@
 import { PrismaClient, Prisma } from '@prisma/client'
-import { resolveIntegrations } from './integrations'
 
 export interface JobPayload {
   workflowRunId: string
@@ -7,26 +6,6 @@ export interface JobPayload {
   stepType: string
   config?: Record<string, unknown>
   attempt: number
-}
-
-export interface StepHandler {
-  (payload: JobPayload, context: JobContext): Promise<StepResult>
-}
-
-export interface StepResult {
-  success: boolean
-  output?: Record<string, unknown>
-  error?: string
-  runAfter?: Date
-}
-
-export interface JobContext {
-  lead: any
-  workflowRun: any
-  assignee: any
-  workspace: any
-  integrations: any[]
-  prisma: PrismaClient
 }
 
 export interface Job {
@@ -68,7 +47,7 @@ export class JobQueue {
   ): Promise<void> {
     await (client as PrismaClient).job.create({
       data: {
-        payload: payload as any,
+        payload: payload as unknown as Prisma.InputJsonValue,
         status: 'PENDING',
         runAfter,
       },
@@ -97,7 +76,7 @@ export class JobQueue {
       where: { id: jobId },
       data: {
         status: 'COMPLETED',
-        output: output as any,
+        output: output as unknown as Prisma.InputJsonValue,
         completedAt: new Date(),
       },
     })
@@ -156,32 +135,5 @@ export class JobQueue {
       this.prisma.job.count({ where: { status: 'FAILED' } }),
     ])
     return { pending, claimed, completed, failed }
-  }
-}
-
-export async function createJobContext(
-  prisma: PrismaClient,
-  workflowRunId: string
-): Promise<JobContext | null> {
-  const workflowRun = await prisma.workflowRun.findUnique({
-    where: { id: workflowRunId },
-    include: {
-      workflow: true,
-      lead: { include: { assignee: { include: { user: true } } } },
-      workspace: true,
-    },
-  })
-
-  if (!workflowRun) return null
-
-  const integrations = await resolveIntegrations(prisma, workflowRun.workspaceId)
-
-  return {
-    lead: workflowRun.lead,
-    workflowRun,
-    assignee: workflowRun.lead?.assignee,
-    workspace: workflowRun.workspace,
-    integrations,
-    prisma,
   }
 }

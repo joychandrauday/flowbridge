@@ -37,18 +37,18 @@ export const sendTelegramExecutor: StepExecutor = {
     let targetChatId = chatId ? renderTemplateValue(chatId, templateContext) : undefined
 
     if (!targetChatId && sendToRole) {
-      if (sendToRole === 'LEAD_ASSIGNEE' && lead.assigneeId) {
+      if (sendToRole === 'LEAD_ASSIGNEE' && lead?.assigneeId) {
         const assignee = await prisma.member.findUnique({
           where: { id: lead.assigneeId },
           include: { user: true },
         })
-        targetChatId = (assignee?.user as any)?.telegramChatId
+        targetChatId = (assignee?.user as { telegramChatId?: string | null } | undefined)?.telegramChatId ?? undefined
       } else {
         const member = await prisma.member.findFirst({
           where: { workspaceId: workspace.id, role: sendToRole as 'OWNER' | 'ADMIN' | 'AGENT' },
           include: { user: true },
         })
-        targetChatId = (member?.user as any)?.telegramChatId
+        targetChatId = (member?.user as { telegramChatId?: string | null } | undefined)?.telegramChatId ?? undefined
       }
     }
 
@@ -81,15 +81,17 @@ export const sendTelegramExecutor: StepExecutor = {
         return { success: false, error: data.description || 'Telegram API error' }
       }
 
-      await prisma.activity.create({
-        data: {
-          workspaceId: workspace.id,
-          leadId: lead.id,
-          type: 'telegram_sent',
-          body: `Telegram message sent`,
-          meta: { chatId: targetChatId, messageId: data.result?.message_id },
-        },
-      })
+      if (lead) {
+        await prisma.activity.create({
+          data: {
+            workspaceId: workspace.id,
+            leadId: lead.id,
+            type: 'telegram_sent',
+            body: `Telegram message sent`,
+            meta: { chatId: targetChatId, messageId: data.result?.message_id },
+          },
+        })
+      }
 
       return { success: true, output: { messageId: data.result?.message_id, chatId: targetChatId } }
     } catch (error) {

@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { Role } from '@prisma/client'
 
 export const createTaskExecutor: StepExecutor = {
   type: 'create_task',
@@ -35,7 +36,7 @@ export const createTaskExecutor: StepExecutor = {
     let targetAssigneeId: string | undefined = assigneeId
 
     if (!targetAssigneeId && assigneeStrategy === 'lead_assignee') {
-      targetAssigneeId = lead.assigneeId
+      targetAssigneeId = lead.assigneeId ?? undefined
     }
 
     if (!targetAssigneeId && assigneeStrategy === 'round_robin') {
@@ -66,7 +67,7 @@ export const createTaskExecutor: StepExecutor = {
 
     if (!targetAssigneeId && assigneeStrategy === 'role') {
       const member = await prisma.member.findFirst({
-        where: { workspaceId: lead.workspaceId, role: role as any, available: true },
+        where: { workspaceId: lead.workspaceId, role: role as Role, available: true },
         orderBy: { createdAt: 'asc' },
       })
       targetAssigneeId = member?.id ?? undefined

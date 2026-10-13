@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { evaluateConditions } from '@flowbridge/core/engine/evaluator'
+import { Role } from '@prisma/client'
 
 export const assignExecutor: StepExecutor = {
   type: 'assign',
@@ -26,7 +27,7 @@ export const assignExecutor: StepExecutor = {
         const member = await prisma.member.findFirst({
           where: {
             workspaceId: lead.workspaceId,
-            role: role as any,
+            role: role as Role,
             available: true,
           },
           orderBy: { createdAt: 'asc' },

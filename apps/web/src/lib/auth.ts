@@ -56,9 +56,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id
-        token.workspaceId = (user as any).workspaceId
-        token.workspaceSlug = (user as any).workspaceSlug
-        token.role = (user as any).role
+        const extendedUser = user as typeof user & {
+          workspaceId?: string
+          workspaceSlug?: string
+          role?: string
+        }
+        token.workspaceId = extendedUser.workspaceId
+        token.workspaceSlug = extendedUser.workspaceSlug
+        token.role = extendedUser.role
       }
       if (account?.provider === 'google') {
         // Handle Google OAuth - find or create user
