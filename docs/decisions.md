@@ -47,21 +47,24 @@ lets it pass without a session.
 
 ## Data model
 
-### `scoped()` / scoped-client gaps
+### `scoped()` behaviour and the one deliberate gap
 
-`createScopedClient(workspaceId)` injects `workspaceId` into `where` clauses for
-tenant models. Two known gaps, handled by convention + the guard patterns in
-server actions:
+`createScopedClient(workspaceId)` injects `workspaceId` into every tenant-model
+query. After the hardening pass:
 
-1. **No `job` model** on the scoped client — queue access goes through
-   `JobQueue` (which uses the raw client) and is never tenant-scoped by design
-   (jobs carry a `workflowRunId` that is already scoped).
-2. **`findUnique`/`update` by unique key** cannot have `workspaceId` injected
-   (the unique key isn't `workspaceId`). Server actions therefore always use the
-   global client and **explicitly** filter by both the id *and*
-   `workspaceId: session.user.workspaceId` (see `updateLeadStatus`,
-   `deleteIntegration`, `runWorkflowManually`). A dedicated `scoped()` unit test
-   proves cross-tenant read/update is impossible (Phase 8/9).
+- `findUnique`/`findUniqueOrThrow` are **rewritten to `findFirst`/
+  `findFirstOrThrow`** with `workspaceId` merged into `where`, so isolation no
+  longer depends on Prisma's `extendedWhereUnique` semantics.
+- `create`/`createMany` and `upsert.create` are stamped with the scoped
+  `workspaceId`, overriding any value the caller supplied.
+- `packages/db/src/scoped.test.ts` drives a fake delegate that actually applies
+  `where`/`data`, proving cross-tenant read, update, delete and upsert are
+  impossible — not merely that the helper was *called* with certain arguments.
+
+One model stays out of the scoped client on purpose: **`job`**. Queue access
+goes through `JobQueue` (raw client); jobs carry a `workflowRunId` that is
+already tenant-scoped, and the claim query needs `FOR UPDATE SKIP LOCKED` across
+the whole table.
 
 ### `Lead.email` is globally unique
 
@@ -85,6 +88,18 @@ engine currently creates all step rows at run start and guards re-entry by
 reading existing rows. Applying the index requires a migration and an idempotent
 upsert in the engine; deferred rather than risking existing runs. Recorded as a
 candidate for the hardening phase.
+
+### Executor context is typed; lead-optional steps guard the lead
+
+`ExecutorContext` (`apps/web/src/lib/executors/types.ts`) uses Prisma payload
+types (`ContextLead`, `ContextWorkflowRun`, `ContextAssignee`,
+`ContextWorkspace`) instead of `any`. Time triggers produce runs with **no
+lead**, so the notification executors (`send_email`, `send_slack`,
+`send_telegram`) guard their `Activity` writes behind `if (lead)`, and the
+`assign`/`create_task` executors already return a clear error when no lead is
+present. `leadTemplate(undefined)` now returns `{}`, so `{{lead.*}}` renders
+empty rather than throwing. Typing the boundary surfaced several latent
+null-derefs that `any` had hidden — fixed in place rather than re-suppressed.
 
 ---
 

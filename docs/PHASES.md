@@ -107,7 +107,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Members: role change (owners) + availability toggle (drives round-robin/`role` assignment)
 - [x] API keys page: create (hashed at rest, shown once), revoke, scope picker, last-used column
 - [ ] API-key authentication on a real endpoint (keys are managed but no route consumes them yet)
-- [~] Deep-clean: scoped.ts `any`s removed (db 10→3 warnings); FormBuilder / forms pages / layout icons remain
+- [x] Deep-clean: `packages/db` + `apps/web` lint to **0 warnings/0 errors** (executor/queue `any` → Prisma payload types; unused imports/vars and dead `createJobContext` removed)
 - [x] SSRF guard: pure `packages/core/src/ssrf.ts` (v4/v6, CGNAT, IPv4-mapped, metadata, 6to4/NAT64) + 46 tests; executor resolves every redirect hop, caps body size
 - [x] `scoped()` unit tests proving cross-tenant read/write is impossible (findUnique rewritten to findFirst; upsert create scoped)
 
