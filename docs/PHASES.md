@@ -68,7 +68,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Create/update workflow via zod-validation (`WorkflowDefinitionSchema.parse` server-side); version bump on edit (new runs only)
 - [x] Step config forms per step type (assign, create_task, update_field, email, telegram, slack, http, delay)
 - [x] Test button → `runWorkflowManually` (creates IntakeEvent source `manual` + run, enqueues job)
-- [ ] Tests: editor schema round-trip
+- [x] Tests: editor schema round-trip — `packages/core/src/schema/workflow.test.ts` (13 tests) validates every step type's config through `WorkflowDefinitionSchema`, which is the exact schema the editor form and the server use
 
 ## Phase 5 — Runs & Tasks ✅
 
@@ -97,7 +97,8 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `lead.status_changed`: `updateLeadStatus` fires matching workflows in the status-update transaction (activity id as event id); bumps `lastActivityAt`
 - [x] `runTick` runs the sweep first (failure non-fatal) and reports `stats.triggered`
 - [x] Follow-up escalation demo workflow: fixed invalid `create_task` config (`assigneeRole` → `role`) that made it fail `.strict()` parsing; extracted to `demo-workflows.ts` + schema-drift test
-- [ ] Short-delay integration test (1-minute delay standing in for 24h) against a real test DB — deferred to Phase 9
+- [x] Short-delay integration test (`tests/integration/delay-resume.integration.test.ts`): a 1-minute delay parks the run `WAITING`, schedules a resume job, and finishes `SUCCEEDED` with the post-delay step applied once the (fast-forwarded) job is ticked — the 24h escalation, verified end to end
+- [x] Follow-up escalation integration test (`tests/integration/escalation.integration.test.ts`): a 1-minute `lead.no_activity_for` sweep finds the idle lead, runs create_task (role ADMIN) + update_field to `SUCCEEDED`, and a second tick does not double-escalate (event-id keyed on the activity window)
 
 ## Phase 8 — Settings & hardening (in progress)
 
