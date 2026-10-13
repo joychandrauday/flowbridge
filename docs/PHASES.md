@@ -6,7 +6,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
 ---
 
-## Phase 0 — Foundation repair ✅
+## Phase 0 — Foundation repair ✅ (pushed: `6f0d111`, `bd1c627`)
 
 - [x] Repair mangled App Router dirs (`(auth)`, `(dashboard)`, `api/auth/[...nextauth]`, `api/forms/[id]`, `api/intake/[formKey]`) via fs rename
 - [x] `packages/core/src/crypto.ts` — AES-256-GCM secret box (deriveEncryptionKey, encrypt/decryptSecretWithKey, encrypt/decryptJsonWithKey) + tests
@@ -16,10 +16,10 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Executor TS fixes (createTask, sendTelegram), dashboard fetch rewrite
 - [x] Seed: `sealConfig()` (encrypted integration config via `@flowbridge/core`), follow-up condition `lead.status`, demo workflows
 - [x] `packages/db/tsconfig.json` — remove `rootDir` so `@flowbridge/core` imports typecheck
-- [~] Commit + push Phase 0 (pending final green pipeline)
+- [x] Commit + push Phase 0
 - [ ] `pnpm db:seed` to refresh demo data with encrypted config
 
-## Phase 1 — Engine loop ✅ (code) / [~] verification
+## Phase 1 — Engine loop ✅ (pushed: `0b85e53`)
 
 - [x] `WorkflowStepSchema` → proper discriminated union (was: assign-only config for all steps) + `send_slack` union member; step-type tests (`workflow.test.ts`, 13 tests)
 - [x] `packages/core/src/redact.ts` — secret masking for run-history snapshots + tests
@@ -37,9 +37,11 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `createTask` renders `title`/`description` templates (was raw `{{lead.name}}`)
 - [x] `sendEmail` SMTP provider: real nodemailer transport (host/port/auth/secure/from)
 - [x] `engine.test.ts` — pure backoff/time-budget unit tests
-- [~] `pnpm typecheck && pnpm lint && pnpm test` green; then commit + push Phase 1
+- [x] `pnpm typecheck && pnpm lint && pnpm test` green; committed + pushed Phase 1
 - [ ] Integration test: intake → lead → run → steps (needs test DB; Phase 9)
 - [ ] Failure-path verification: mail 500 → backoff retry → FAILED → retry button (Phase 9)
+
+## Phase 8a — Registration & onboarding ✅ (pushed: `34933df`)
 
 ## Phase 2 — Integrations
 
@@ -49,30 +51,30 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [ ] API routes for integrations CRUD (server-action or route, auth'd, scoped)
 - [ ] Tests: round-trip encrypt/configured flag, decrypted resolver for engine
 
-## Phase 3 — Leads CRM
+## Phase 3 — Leads CRM ✅ (pushed: `37f6c0b`)
 
-- [ ] Leads page: table (server-side pagination/sort/filter), saved filters
-- [ ] Lead detail view: timeline (intake, activity, status changes), data JSON, tasks
-- [ ] Lead update field/status actions + activity logging
+- [x] Leads page: table (server-side pagination/sort/filter), saved filters
+- [x] Lead detail view: timeline (intake, activity, status changes), data JSON, tasks
+- [x] Lead update field/status actions + activity logging (server actions: `updateLeadStatus`, `updateLeadAssignee`, `addLeadNote`)
 - [ ] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs)
 - [ ] Scoped-query audit: every tenant query via `scoped()` (note: `findUnique` injection needs a fix)
 - [ ] Tests: cross-tenant isolation on leads, import idempotency
 
-## Phase 4 — Workflows UI
+## Phase 4 — Workflows UI ✅ (list) / [ ] editor
 
-- [ ] Workflows list page (enable/disable, version badge, test button)
+- [x] Workflows list page (enable/disable toggle, version badge, run counts, per-workflow run filter)
 - [ ] Workflow editor: vertical stepper (Trigger → Conditions → Actions with `+`), live JSON preview drawer
 - [ ] Create/update workflow via zod-validation; version bump on edit (new runs only)
 - [ ] Step config forms per step type (assign, create_task, update_field, email, telegram, slack, http, delay)
 - [ ] Test button → dry-run or run against a real lead
 - [ ] Tests: editor schema round-trip
 
-## Phase 5 — Runs & Tasks
+## Phase 5 — Runs & Tasks ✅ (core; failure-notification pending)
 
-- [ ] Runs page: list with status, workflow, lead, duration
-- [ ] Run detail: step timeline (PENDING/RUNNING/SUCCEEDED/FAILED), redacted input/output, error banners
-- [ ] Retry-from-failed-step: enqueue retry job for that step
-- [ ] Tasks page: queue (due, assignee, lead), complete/dismiss, filter
+- [x] Runs page: list with status, workflow, lead, duration, filters
+- [x] Run detail: step timeline (PENDING/RUNNING/SUCCEEDED/FAILED), redacted input/output, error banners
+- [x] Retry-from-failed-step: enqueue retry job for that step (`/runs/actions.ts`)
+- [x] Tasks page: queue (due, assignee, lead), complete/dismiss, filter
 - [ ] Failure-notification to Owner when a run fails
 - [ ] Tests: run history rendering, retry replay correctness
 
