@@ -16,6 +16,11 @@ export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     fileParallelism: false,
+    // One worker process for the whole suite: a single Prisma client instance and
+    // only one teardown. (Multiple worker exits intermittently crash the native
+    // Prisma engine on Windows with 0xC0000005 *after* the tests pass.)
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
     testTimeout: 30_000,
     hookTimeout: 30_000,
   },
