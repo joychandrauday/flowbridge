@@ -39,14 +39,10 @@ export default auth((req) => {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api/intake (public form submission)
-     * - api/webhooks (public webhook intake)
-     * - embed (public form embed)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Protect dashboard pages only. All /api routes manage their own auth
+     * (NextAuth handlers, CRON_SECRET for /api/internal/tick, form-scoped
+     * lookup for /api/intake) — the middleware must never hijack them.
      */
-    '/((?!api/intake|api/webhooks|embed|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/|_next/static|_next/image|favicon.ico|embed|login|register|onboarding).*)',
   ],
 }

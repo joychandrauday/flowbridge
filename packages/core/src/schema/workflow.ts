@@ -143,6 +143,13 @@ export const SendTelegramStepConfigSchema = z.object({
   integrationName: z.string().optional(),
 }).strict()
 
+export const SendSlackStepConfigSchema = z.object({
+  message: z.string().min(1),
+  channel: z.string().optional(), // Template; defaults to integration defaultChannel
+  blocks: z.array(z.record(z.unknown())).optional(),
+  integrationName: z.string().optional(),
+}).strict()
+
 export const HttpRequestStepConfigSchema = z.object({
   url: z.string().url(),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('POST'),
@@ -165,23 +172,41 @@ export const StepConfigSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('update_field'), config: UpdateFieldStepConfigSchema }),
   z.object({ type: z.literal('send_email'), config: SendEmailStepConfigSchema }),
   z.object({ type: z.literal('send_telegram'), config: SendTelegramStepConfigSchema }),
+  z.object({ type: z.literal('send_slack'), config: SendSlackStepConfigSchema }),
   z.object({ type: z.literal('http_request'), config: HttpRequestStepConfigSchema }),
   z.object({ type: z.literal('delay'), config: DelayStepConfigSchema }),
 ])
 
 export type StepConfig = z.infer<typeof StepConfigSchema>
 
+/** Builds the per-step schema for a given step type. */
+function stepSchemaOf<T extends StepConfig['type']>(
+  type: T,
+  configSchema: (typeof StepConfigSchema.options)[number]['shape']['config']
+) {
+  return z.object({
+    id: z.string().min(1),
+    type: z.literal(type),
+    config: configSchema,
+    retry: StepRetrySchema.optional(),
+    onFailure: StepOnFailureSchema.optional(),
+  })
+}
+
 // ============================================
 // Workflow Definition
 // ============================================
 
-export const WorkflowStepSchema = z.object({
-  id: z.string().min(1),
-  type: StepConfigSchema.options[0].shape.type,
-  config: StepConfigSchema.options[0].shape.config,
-  retry: StepRetrySchema.optional(),
-  onFailure: StepOnFailureSchema.optional(),
-})
+export const WorkflowStepSchema = z.discriminatedUnion('type', [
+  stepSchemaOf('assign', AssignStepConfigSchema),
+  stepSchemaOf('create_task', CreateTaskStepConfigSchema),
+  stepSchemaOf('update_field', UpdateFieldStepConfigSchema),
+  stepSchemaOf('send_email', SendEmailStepConfigSchema),
+  stepSchemaOf('send_telegram', SendTelegramStepConfigSchema),
+  stepSchemaOf('send_slack', SendSlackStepConfigSchema),
+  stepSchemaOf('http_request', HttpRequestStepConfigSchema),
+  stepSchemaOf('delay', DelayStepConfigSchema),
+])
 
 export const WorkflowDefinitionSchema = z.object({
   trigger: TriggerConfigSchema,

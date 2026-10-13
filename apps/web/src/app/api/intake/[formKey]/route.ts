@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createScopedClient } from '@flowbridge/db'
 import { createIntakeSchema, validateIntakeSubmission, type Form } from '@flowbridge/core'
 import { z } from 'zod'
-import { PrismaClient, Prisma } from '@prisma/client'
+import { prisma } from '@flowbridge/db'
+import { Prisma } from '@prisma/client'
+import { JobQueue } from '@/lib/queue'
+import { createRunsForLeadEvent, drainNow } from '@/lib/engine'
 
 // Rate limiting store (in-memory for now, replace with Vercel KV in production)
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
@@ -71,8 +73,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unsupported content type' }, { status: 415 })
     }
 
-    // Get form from database (using global prisma for form lookup)
-    const prisma = new PrismaClient()
+    // Get form from database (using global prisma; workspaceId is server-derived, never client-supplied)
     const form = await prisma.form.findUnique({
       where: { key: formKey },
       select: {
@@ -85,8 +86,6 @@ export async function POST(
         active: true,
       },
     })
-
-    await prisma.$disconnect()
 
     if (!form) {
       return NextResponse.json({ error: 'Form not found' }, { status: 404 })
@@ -139,8 +138,9 @@ export async function POST(
       )
     }
 
-    // Create IntakeEvent and Lead in a transaction using scoped client
-    const scopedPrisma = createScopedClient(form.workspaceId)
+    // Create IntakeEvent, Lead, WorkflowRuns and Jobs atomically (SPEC §2.1),
+    // so no event is ever lost between the write and the queue.
+    const queue = new JobQueue(prisma, `worker-intake-${Date.now()}`)
 
     // Extract lead data from validated payload
     const validatedData = validation.data as Record<string, unknown>
@@ -153,7 +153,7 @@ export async function POST(
       data: validatedData,
     }
 
-    const result = await scopedPrisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Create IntakeEvent
       const intakeEvent = await tx.intakeEvent.create({
         data: {
@@ -185,8 +185,18 @@ export async function POST(
         data: { leadId: lead.id },
       })
 
-      return { intakeEvent, lead }
+      // Enqueue matching `lead.created` workflows in the same transaction
+      const runIds = await createRunsForLeadEvent(tx, queue, {
+        workspaceId: form.workspaceId,
+        leadId: lead.id,
+        eventId: intakeEvent.id,
+      })
+
+      return { intakeEvent, lead, runIds }
     })
+
+    // Best-effort immediate drain; the cron tick is the durable fallback.
+    drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
 
     // Return 202 Accepted - intake accepted, processing async
     return NextResponse.json(

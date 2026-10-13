@@ -1,12 +1,13 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/client'
 import { WorkflowDefinition } from '@flowbridge/core/schema'
 import { evaluateConditions, renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { resolveIntegrations } from './integrations'
 
 export interface JobPayload {
   workflowRunId: string
   stepKey?: string
   stepType: string
-  config: Record<string, unknown>
+  config?: Record<string, unknown>
   attempt: number
 }
 
@@ -50,7 +51,24 @@ export class JobQueue {
   }
 
   async enqueue(payload: JobPayload, runAfter: Date = new Date()): Promise<void> {
-    await this.prisma.job.create({
+    await this.createJob(this.prisma, payload, runAfter)
+  }
+
+  /** Enqueue inside an interactive transaction so intake and job writes commit atomically. */
+  async enqueueTx(
+    tx: Prisma.TransactionClient,
+    payload: JobPayload,
+    runAfter: Date = new Date()
+  ): Promise<void> {
+    await this.createJob(tx as PrismaClient, payload, runAfter)
+  }
+
+  private async createJob(
+    client: PrismaClient | Prisma.TransactionClient,
+    payload: JobPayload,
+    runAfter: Date
+  ): Promise<void> {
+    await (client as PrismaClient).job.create({
       data: {
         payload: payload as any,
         status: 'PENDING',
@@ -158,9 +176,7 @@ export async function createJobContext(
 
   if (!workflowRun) return null
 
-  const integrations = await prisma.integration.findMany({
-    where: { workspaceId: workflowRun.workspaceId },
-  })
+  const integrations = await resolveIntegrations(prisma, workflowRun.workspaceId)
 
   return {
     lead: workflowRun.lead,
