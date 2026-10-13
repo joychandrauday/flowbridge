@@ -151,3 +151,44 @@ in one place. Rich client components are reserved where they earn their keep
 Per SPEC §5/AGENTS §5: Trigger card → Conditions card → Action cards with `+`
 between, plus a JSON preview drawer and a "Run on lead" test action. No
 drag-and-drop canvas (explicit non-goal).
+
+### Agents are scoped to their own leads and tasks
+
+SPEC §3 says an Agent "sees assigned leads only". Enforced on **both** the list
+and the detail pages of `/leads` and `/tasks` (an agent's `where` gains
+`assigneeId = <their member id>`; unknown → a sentinel that matches nothing), and
+in the lead server actions (`updateLeadStatus`, `addLeadNote`). Reassigning a
+lead is an Owner/Admin action, so `updateLeadAssignee` rejects agents outright.
+Owners/Admins are unrestricted. (Previously only the assignee dropdown was
+role-aware; the queries were not.)
+
+---
+
+## Engine / data
+
+### `JobQueue.claim()` must quote `"runAfter"`
+
+The claim query is a hand-written `FOR UPDATE SKIP LOCKED` statement. It referred
+to `runAfter` **unquoted**, so Postgres folded it to `runafter` and the column did
+not exist — meaning *claiming a job never worked against Postgres at all* (the
+unit tests only exercised a mocked client, so it went unnoticed). Found by the
+new database integration test (`apps/web/tests/integration/queue.integration.test.ts`).
+Fixed to `"runAfter"`. Prisma maps camel-case columns to quoted identifiers, so
+**every raw SQL fragment must quote camel-case columns**.
+
+### Database integration tests are opt-in and refuse a non-empty DB
+
+`pnpm test` stays pure/fast. Integration tests live in
+`apps/web/tests/integration/*.test.ts` and run via `test:integration` against
+`TEST_DATABASE_URL` (a dedicated scratch database; apply the schema with
+`prisma db push`). The suite throws if the target database already contains
+workflows, so pointing it at seeded demo data fails loudly rather than mutating
+it. CI runs them against a `postgres:16` service container.
+
+### API requests authenticate with a session *or* an API key
+
+`GET /api/leads` accepts either the dashboard session or
+`Authorization: Bearer fb_…`. Keys are stored as SHA-256 hashes; the helper
+compares constant-time, rejects expired keys, bumps `lastUsedAt`, and requires the
+`read:leads` scope. The key's `workspaceId` — never a client value — scopes the
+query. Other endpoints remain session-only for now.

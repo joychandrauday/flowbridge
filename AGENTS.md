@@ -20,7 +20,7 @@ Lead-to-action workflow automation. A lead arrives (form, webhook, CSV) → assi
 | Tests | Vitest, Playwright |
 | CI | GitHub Actions: lint, typecheck, test, `prisma validate` |
 
-**No Redis. No always-on worker. No VPS.** The only job consumer is the tick route handler, triggered by an external cron with `Authorization: Bearer CRON_SECRET`. Queue work happens inside Next.js `after()` for the immediate first drain.
+**No Redis. No always-on worker. No VPS.** The only job consumer is the tick route handler, triggered by an external cron with `Authorization: Bearer CRON_SECRET`. After the intake transaction commits, a best-effort in-process drain runs the first jobs immediately; the cron tick is the durable path (Next 14.0.4 has no stable `after()` — see `docs/decisions.md`).
 
 Repo layout:
 
@@ -28,7 +28,7 @@ Repo layout:
 flowbridge/
   apps/web/            # Next.js app, route handlers, server actions
   packages/db/         # prisma schema, client, seed
-  packages/core/       # workflow zod schema, engine, step executors, templates  ← pure, no IO
+  packages/core/       # workflow zod schema, evaluator, templates, crypto, hmac, cron, ssrf  ← pure, no IO
   packages/ui/         # shared shadcn components (optional)
   docs/
 ```
@@ -42,7 +42,7 @@ pnpm workspaces. If the monorepo feels heavy, collapse to one repo with `src/wor
 These are the things that break silently if violated. Treat them as non-negotiable.
 
 1. **No event loss.** Intake persists `IntakeEvent` + `Lead` + `jobs` rows in **one transaction**, then returns `202`. Never respond before the write commits. Never do outbound HTTP inline during intake.
-2. **The queue lives in Postgres.** All queue access goes through the `JobQueue` interface (`enqueue`, `claim`, `complete`, `fail`, `reschedule`) in `packages/core` or `apps/web/queue`. The Postgres implementation is swappable for pg-boss/Inngest later — never leak `jobs`-table queries outside that module.
+2. **The queue lives in Postgres.** All queue access goes through the `JobQueue` interface (`enqueue`, `claim`, `complete`, `fail`, `reschedule`) in `apps/web/src/lib/queue.ts`. The Postgres implementation is swappable for pg-boss/Inngest later — never leak `jobs`-table queries outside that module.
 3. **Claim jobs with `FOR UPDATE SKIP LOCKED`**, respect `lockedUntil` for crash recovery, and reclaim expired locks on every tick. Run inside a **~25 second time budget**; anything not finished is re-queued by setting `runAfter`.
 4. **~1-minute granularity is expected** for delay steps and retries (tick runs every minute). This is documented behavior, not a bug. Do not "fix" it by adding infrastructure.
 5. **Idempotency:** `@@unique([workflowId, eventId])` on `WorkflowRun`. The same domain event must never produce two runs.
@@ -92,7 +92,7 @@ Write or extend tests with every feature. No exceptions.
 
 ```bash
 pnpm typecheck && pnpm lint && pnpm test     # required after every task
-pnpm prisma:generate && pnpm db:migrate && pnpm db:seed
+pnpm db:generate && pnpm db:migrate && pnpm db:seed
 pnpm test:e2e                                # Playwright, golden path
 ```
 

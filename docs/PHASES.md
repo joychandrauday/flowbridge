@@ -106,20 +106,20 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Workspace settings: name/slug edit, webhook endpoint + secret rotation (owners/admins only)
 - [x] Members: role change (owners) + availability toggle (drives round-robin/`role` assignment)
 - [x] API keys page: create (hashed at rest, shown once), revoke, scope picker, last-used column
-- [ ] API-key authentication on a real endpoint (keys are managed but no route consumes them yet)
+- [x] API-key authentication on a real endpoint: `authenticateApiKey` (constant-time hash compare) + `GET /api/leads` gated on `read:leads`; unit-tested
 - [x] Deep-clean: `packages/db` + `apps/web` lint to **0 warnings/0 errors** (executor/queue `any` → Prisma payload types; unused imports/vars and dead `createJobContext` removed)
 - [x] SSRF guard: pure `packages/core/src/ssrf.ts` (v4/v6, CGNAT, IPv4-mapped, metadata, 6to4/NAT64) + 46 tests; executor resolves every redirect hop, caps body size
 - [x] `scoped()` unit tests proving cross-tenant read/write is impossible (findUnique rewritten to findFirst; upsert create scoped)
 
 ## Phase 9 — Tests / CI / Docs
 
-- [ ] ≥70% coverage in `packages/core` (current suites: crypt, evaluator, workflow schema, redact, engine backoff)
-- [ ] Integration tests against real test DB (intake → run → steps; tick called directly)
-- [ ] Playwright E2E: sign up → create form → submit public URL → lead → run succeeded → agent sees only assigned leads
-- [ ] GitHub Actions CI: lint, typecheck, test, `prisma validate`
-- [ ] README (mermaid architecture diagram, deployment, demo credentials, trade-offs per AGENTS §10)
-- [ ] `docs/decisions.md` — record deviations: `after()` unavailable on Next 14 (drainNow instead), serialized `pnpm test`, middleware matcher, `scoped()` findUnique caveat, real SMTP, registration/onboarding flow
-- [ ] Update AGENTS.md stale claims (correct `pnpm db:generate`, executor location, JobQueue class, `lockedBy`/`lockedAt`)
+- [x] ≥70% coverage in `packages/core` — **81%** statements / 87% branch; thresholds (70%) enforced in `packages/core/vitest.config.ts`, run in CI via `test:coverage`
+- [x] Integration tests against a real test DB (`apps/web/tests/integration`, opt-in via `TEST_DATABASE_URL`): claim-once (`SKIP LOCKED`), future jobs, **expired-lock reclaim**, failure backoff. Verified against Postgres; CI runs them with a `postgres:16` service. **Found + fixed a real bug: `JobQueue.claim()` used unquoted `runAfter` (Postgres folded it to `runafter`), so claiming never worked against Postgres.**
+- [x] Playwright E2E (`apps/web/e2e`): golden path (submit public form → lead → run `SUCCEEDED`) + agent scoping (SPEC §3)
+- [x] GitHub Actions CI (`.github/workflows/ci.yml`): lint, typecheck, test, `prisma validate`, core coverage gate, and a Postgres-backed integration job
+- [x] README (mermaid architecture diagram, deployment, demo credentials, intake reference, trade-offs per AGENTS §10) + `.env.example`
+- [x] `docs/decisions.md` — deviations recorded: `after()` unavailable on Next 14 (drainNow), serialized `pnpm test`, middleware matcher, `scoped()` behaviour, real SMTP, registration/onboarding flow, executor typing, run-step index
+- [x] Update AGENTS.md stale claims (correct `pnpm db:generate`, executor/core split, JobQueue location, `after()` note)
 
 ---
 
