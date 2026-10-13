@@ -23,8 +23,6 @@ export default async function DashboardPage() {
     overdueTasks,
     totalRuns,
     successfulRuns,
-    failedRuns,
-    leadsWithResponse,
   ] = await Promise.all([
     prisma.lead.count({ where: { workspaceId } }),
     prisma.lead.count({ where: { workspaceId, status: 'NEW' } }),
@@ -34,23 +32,9 @@ export default async function DashboardPage() {
     prisma.task.count({ where: { workspaceId, status: 'OPEN', dueAt: { lt: new Date() } } }),
     prisma.workflowRun.count({ where: { workflow: { workspaceId } } }),
     prisma.workflowRun.count({ where: { workflow: { workspaceId }, status: 'SUCCEEDED' } }),
-    prisma.workflowRun.count({ where: { workflow: { workspaceId }, status: 'FAILED' } }),
-    prisma.lead.findMany({
-      where: { workspaceId, firstContactedAt: { not: null } },
-      select: { createdAt: true, firstContactedAt: true },
-    }),
   ])
 
   const successRate = totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) : 0
-
-  // Calculate avg response time in minutes
-  const avgResponseMinutes = leadsWithResponse.length > 0
-    ? Math.round(
-        leadsWithResponse.reduce((sum, lead) => 
-          sum + (lead.firstContactedAt!.getTime() - lead.createdAt.getTime()), 0
-        ) / leadsWithResponse.length / (1000 * 60)
-      )
-    : 0
 
   // Leads grouped by source for the pie chart
   const sourceGroups = await prisma.lead.groupBy({

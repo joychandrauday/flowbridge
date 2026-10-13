@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createIntakeSchema, validateIntakeSubmission, type Form } from '@flowbridge/core'
+import { validateIntakeSubmission, type Form } from '@flowbridge/core'
 import { z } from 'zod'
 import { prisma } from '@flowbridge/db'
 import { Prisma } from '@prisma/client'

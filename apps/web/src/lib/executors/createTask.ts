@@ -1,4 +1,4 @@
-import { StepExecutor, StepResult, ExecutorContext, leadTemplate } from './types'
+import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
 
 export const createTaskExecutor: StepExecutor = {

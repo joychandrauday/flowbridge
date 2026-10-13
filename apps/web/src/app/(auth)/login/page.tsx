@@ -47,7 +47,7 @@ export default function LoginPage() {
         router.push(callbackUrl)
         router.refresh()
       }
-    } catch (error) {
+    } catch {
       toast({ title: 'Error', description: 'Something went wrong', variant: 'destructive' })
     } finally {
       setIsLoading(false)
