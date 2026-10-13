@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { Edit, Trash2, ExternalLink, Copy, MoreVertical } from 'lucide-react'
+import { Edit, Trash2, ExternalLink, Copy, MoreVertical, Code2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/hooks/use-toast'
@@ -80,6 +80,12 @@ export default function FormsTable({ forms }: FormsTableProps) {
     const url = `${window.location.origin}/f/${key}`
     navigator.clipboard.writeText(url)
     toast({ title: 'Public URL copied', description: url })
+  }
+
+  const copyEmbedSnippet = (key: string) => {
+    const snippet = `<script src="${window.location.origin}/embed.js" data-form="${key}"></script>`
+    navigator.clipboard.writeText(snippet)
+    toast({ title: 'Embed code copied', description: 'Paste it into your site HTML.' })
   }
 
   if (forms.length === 0) {
@@ -149,6 +155,10 @@ export default function FormsTable({ forms }: FormsTableProps) {
                     <DropdownMenuItem onClick={() => copyPublicUrl(form.key)}>
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Copy Public URL
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => copyEmbedSnippet(form.key)}>
+                      <Code2 className="mr-2 h-4 w-4" />
+                      Copy Embed Code
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigator.clipboard.writeText(form.key)}>
                       <Copy className="mr-2 h-4 w-4" />
