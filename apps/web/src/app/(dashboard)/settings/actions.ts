@@ -5,6 +5,11 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@flowbridge/db'
 import { encryptJson } from '@/lib/crypto'
 import { z } from 'zod'
+import { createHash, randomBytes } from 'crypto'
+import { Role } from '@prisma/client'
+
+const SLUG_REGEX = /^[a-z0-9](?:[a-z0-9-]{1,48}[a-z0-9])?$/
+const API_KEY_SCOPES = ['read:leads', 'write:workflows', 'trigger:intake'] as const
 
 /**
  * Integration config schemas — field shapes must match exactly what each
@@ -149,4 +154,151 @@ export async function sendTestEmail() {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Send failed' }
   }
+}
+
+/** Resolve the session plus the caller's membership (role-aware guards). */
+async function getActor() {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return null
+  const member = await prisma.member.findFirst({
+    where: { userId: session.user.id, workspaceId: session.user.workspaceId },
+  })
+  return { session, member, workspaceId: session.user.workspaceId }
+}
+
+function isManager(role?: Role | null): boolean {
+  return role === 'OWNER' || role === 'ADMIN'
+}
+
+/** Update the workspace name and slug. Managers only; slug must stay unique. */
+export async function updateWorkspace(formData: FormData) {
+  const actor = await getActor()
+  if (!actor) return { ok: false, error: 'Unauthorized' }
+  if (!isManager(actor.member?.role)) return { ok: false, error: 'Only owners/admins can change workspace settings' }
+
+  const name = String(formData.get('name') ?? '').trim()
+  const slug = String(formData.get('slug') ?? '').trim().toLowerCase()
+
+  if (name.length < 1 || name.length > 100) return { ok: false, error: 'Name must be 1–100 characters' }
+  if (!SLUG_REGEX.test(slug)) {
+    return { ok: false, error: 'Slug must be 3–50 lowercase letters, numbers, or hyphens' }
+  }
+
+  const conflict = await prisma.workspace.findFirst({
+    where: { slug, NOT: { id: actor.workspaceId } },
+    select: { id: true },
+  })
+  if (conflict) return { ok: false, error: 'That slug is already taken' }
+
+  await prisma.workspace.update({ where: { id: actor.workspaceId }, data: { name, slug } })
+  revalidatePath('/settings')
+  return { ok: true }
+}
+
+/** Generate a fresh webhook secret. Returned once — only the hash-less secret is shown. */
+export async function regenerateWebhookSecret() {
+  const actor = await getActor()
+  if (!actor) return { ok: false, error: 'Unauthorized' }
+  if (!isManager(actor.member?.role)) return { ok: false, error: 'Only owners/admins can rotate the webhook secret' }
+
+  const secret = `whsec_${randomBytes(24).toString('base64url')}`
+  await prisma.workspace.update({
+    where: { id: actor.workspaceId },
+    data: { webhookSecret: secret },
+  })
+  revalidatePath('/settings')
+  return { ok: true, secret }
+}
+
+/** Create an API key. The plaintext is returned once and never stored. */
+export async function createApiKey(input: { name: string; scopes: string[] }) {
+  const actor = await getActor()
+  if (!actor) return { ok: false, error: 'Unauthorized' }
+  if (!isManager(actor.member?.role)) return { ok: false, error: 'Only owners/admins can create API keys' }
+
+  const name = (input.name ?? '').trim()
+  if (name.length < 1 || name.length > 60) return { ok: false, error: 'Name must be 1–60 characters' }
+
+  const scopes = (input.scopes ?? []).filter((scope) =>
+    (API_KEY_SCOPES as readonly string[]).includes(scope)
+  )
+
+  const secret = `fb_${randomBytes(24).toString('base64url')}`
+  const keyHash = createHash('sha256').update(secret).digest('hex')
+  const prefix = secret.slice(0, 11)
+
+  await prisma.apiKey.create({
+    data: {
+      workspaceId: actor.workspaceId,
+      userId: actor.session.user.id,
+      name,
+      keyHash,
+      prefix,
+      scopes,
+    },
+  })
+
+  revalidatePath('/settings')
+  return { ok: true, key: secret }
+}
+
+/** Revoke an API key (scoped to the session workspace). */
+export async function revokeApiKey(id: string) {
+  const actor = await getActor()
+  if (!actor) return { ok: false, error: 'Unauthorized' }
+  if (!isManager(actor.member?.role)) return { ok: false, error: 'Only owners/admins can revoke API keys' }
+
+  const existing = await prisma.apiKey.findFirst({
+    where: { id, workspaceId: actor.workspaceId },
+    select: { id: true },
+  })
+  if (!existing) return { ok: false, error: 'Not found' }
+
+  await prisma.apiKey.delete({ where: { id: existing.id } })
+  revalidatePath('/settings')
+  return { ok: true }
+}
+
+/** Toggle a member's availability (used by round-robin assignment). */
+export async function setMemberAvailability(formData: FormData) {
+  const actor = await getActor()
+  if (!actor || !isManager(actor.member?.role)) return
+
+  const memberId = String(formData.get('memberId') ?? '')
+  const available = String(formData.get('available') ?? '') === 'true'
+  if (!memberId) return
+
+  await prisma.member.updateMany({
+    where: { id: memberId, workspaceId: actor.workspaceId },
+    data: { available },
+  })
+  revalidatePath('/settings')
+}
+
+/** Change a member's role. Owners only, and never demote the last owner. */
+export async function setMemberRole(formData: FormData) {
+  const actor = await getActor()
+  if (!actor || actor.member?.role !== 'OWNER') return
+
+  const memberId = String(formData.get('memberId') ?? '')
+  const role = String(formData.get('role') ?? '')
+  if (!memberId || !['OWNER', 'ADMIN', 'AGENT'].includes(role)) return
+  if (memberId === actor.member.id) return // don't change your own role
+
+  if (role !== 'OWNER') {
+    const owners = await prisma.member.count({
+      where: { workspaceId: actor.workspaceId, role: 'OWNER' },
+    })
+    const target = await prisma.member.findFirst({
+      where: { id: memberId, workspaceId: actor.workspaceId },
+      select: { role: true },
+    })
+    if (target?.role === 'OWNER' && owners <= 1) return // keep at least one owner
+  }
+
+  await prisma.member.updateMany({
+    where: { id: memberId, workspaceId: actor.workspaceId },
+    data: { role: role as Role },
+  })
+  revalidatePath('/settings')
 }
