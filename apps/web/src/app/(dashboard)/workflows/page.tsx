@@ -55,9 +55,11 @@ export default async function WorkflowsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Workflows</h1>
           <p className="text-muted-foreground">Automations that act on your leads as they arrive</p>
         </div>
-        <Button disabled title="Workflow editor lands in the next phase">
-          <Play className="mr-2 h-4 w-4" />
-          New workflow
+        <Button asChild>
+          <Link href="/workflows/new">
+            <Play className="mr-2 h-4 w-4" />
+            New workflow
+          </Link>
         </Button>
       </div>
 
@@ -115,6 +117,9 @@ export default async function WorkflowsPage() {
                   </Button>
                   <Button asChild size="sm" variant="ghost">
                     <Link href={`/runs?workflowId=${workflow.id}`}>View runs</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={`/workflows/${workflow.id}/edit`}>Edit</Link>
                   </Button>
                 </form>
               </CardContent>
