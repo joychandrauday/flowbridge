@@ -79,14 +79,16 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [ ] Failure-notification to Owner when a run fails
 - [ ] Tests: run history rendering, retry replay correctness
 
-## Phase 6 — Intake breadth
+## Phase 6 — Intake breadth (in progress)
 
-- [ ] Webhook intake (`/api/webhooks/:workspaceKey/:source`) + HMAC verify over raw body first
+- [x] Webhook intake (`/api/webhooks/[workspaceKey]/[source]`) + HMAC verify over raw body first (`packages/core/src/hmac.ts` + tests)
+- [x] Public hosted form page `/f/[formKey]` (was a broken link — FormsTable copied a nonexistent URL) + shared `PublicForm`
+- [x] Embeddable form: `/embed/[formKey]` iframe page + `/embed.js` loader + "Copy Embed Code" in the forms table (SPEC §2/§3)
+- [x] Middleware: `/f/` public; `/embed`, `/api/webhooks` already public
+- [x] Webhook: workspace-by-slug, per-IP rate limit, 100KB cap, zod payload (passthrough), P2002 → dedupe 200
 - [ ] Multi-form support / field-to-lead mapping, dedupe by email setting
 - [ ] Honeypot + per-IP/per-form rate limiting on intake (verify present + test)
-- [ ] Payload size cap, `z.string().max` on all intake fields (from Form.fields)
-- [ ] Embeddable form widget (`/embed/:formKey`) + embed script
-- [ ] Tests: HMAC failure/success, rate limit, honeypot, size cap
+- [ ] Tests: HMAC failure/success (done), webhook route integration, embed render
 
 ## Phase 7 — Time triggers
 
