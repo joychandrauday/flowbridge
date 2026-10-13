@@ -50,7 +50,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `sendTestEmail` — SMTP (nodemailer) / Resend / log-only providers, decrypted via resolver
 - [x] Client `integration-cards.tsx` per-type forms (email/telegram/slack/http), connect/update/disconnect/test
 - [x] Telegram default chat / member `telegramChatId` support (schema column on `User` + db push + executor reads the real field)
-- [ ] Tests: round-trip encrypt/configured flag, decrypted resolver for engine
+- [x] Tests: round-trip encrypt/configured flag (`crypto.test.ts`), decrypted resolver for the engine incl. legacy plaintext + malformed-ciphertext degradation (`integrations.test.ts`)
 
 ## Phase 3 — Leads CRM ✅ (pushed: `37f6c0b`)
 
@@ -59,7 +59,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Lead update field/status actions + activity logging (server actions: `updateLeadStatus`, `updateLeadAssignee`, `addLeadNote`)
 - [x] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs; per-row transactions, email dedupe, 500KB/2000-row caps) + `/leads/import` UI + pure `parseCsv` tests (8)
 - [x] Scoped-query audit: every dashboard/route tenant query is either `scoped()` or carries `workspaceId`; by-id mutations are always preceded by a scoped read (audited all `update`/`delete`/`findUnique` sites)
-- [ ] Tests: cross-tenant isolation on leads, import idempotency
+- [x] Tests: cross-tenant isolation on tenant tables (the `scoped()` suite in Phase 8 proves read/write isolation); duplicate-email idempotency on the webhook intake path (integration)
 
 ## Phase 4 — Workflows UI ✅ (pushed: `9a2a031`)
 
