@@ -90,13 +90,14 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [ ] Honeypot + per-IP/per-form rate limiting on intake (verify present + test)
 - [ ] Tests: HMAC failure/success (done), webhook route integration, embed render
 
-## Phase 7 — Time triggers
+## Phase 7 — Time triggers ✅
 
-- [ ] Delay / no-activity / schedule triggers in engine:
-  - `lead.no_activity`: condition on last activity > threshold, via tick sweep
-  - `schedule`: cron-expression trigger, runs created by tick sweep
-- [ ] Short-delay integration test (1-minute delay standing in for 24h) — SPEC §8 follow-up escalation
-- [ ] Follow-up escalation demo workflow verified end-to-end
+- [x] `lead.no_activity_for`: tick sweep creates runs for leads older than the threshold; `eventId` keys on `lastActivityAt` so new activity re-arms the window
+- [x] `schedule`: pure 5-field cron matcher (`packages/core/src/cron.ts`, UTC) + tick sweep; `eventId` is the ISO minute (exactly-once per minute)
+- [x] `lead.status_changed`: `updateLeadStatus` fires matching workflows in the status-update transaction (activity id as event id); bumps `lastActivityAt`
+- [x] `runTick` runs the sweep first (failure non-fatal) and reports `stats.triggered`
+- [x] Follow-up escalation demo workflow: fixed invalid `create_task` config (`assigneeRole` → `role`) that made it fail `.strict()` parsing; extracted to `demo-workflows.ts` + schema-drift test
+- [ ] Short-delay integration test (1-minute delay standing in for 24h) against a real test DB — deferred to Phase 9
 
 ## Phase 8 — Settings & hardening
 
