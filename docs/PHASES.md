@@ -88,7 +88,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Webhook: workspace-by-slug, per-IP rate limit, 100KB cap, zod payload (passthrough), P2002 → dedupe 200
 - [ ] Multi-form support / field-to-lead mapping, dedupe by email setting
 - [x] Honeypot + per-IP/per-form rate limiting on intake (extracted to testable `lib/rate-limit.ts`, shared with the webhook route; unit-tested)
-- [ ] Tests: HMAC failure/success (done), webhook route integration, embed render
+- [x] Tests: HMAC failure/success (core), webhook route integration (valid signature creates a lead; bad signature 401), embed render (E2E golden path covers `/f/`)
 
 ## Phase 7 — Time triggers ✅
 
