@@ -186,6 +186,22 @@ new database integration test (`apps/web/tests/integration/queue.integration.tes
 Fixed to `"runAfter"`. Prisma maps camel-case columns to quoted identifiers, so
 **every raw SQL fragment must quote camel-case columns**.
 
+### Pooled Postgres needs `pgbouncer=true` (or the claim query breaks)
+
+The queue's raw `FOR UPDATE SKIP LOCKED` statement uses a **prepared statement**.
+Behind a transaction-mode pooler (Neon's `-pooler` host, Supabase, PgBouncer,
+RDS Proxy) a cached plan can be re-executed on a backend whose `Job` row type
+differs, and Postgres aborts with
+`ERROR: cached plan must not change result type (0A000)`. The failure is
+intermittent and *only* hits the raw claim query — Prisma's normal queries use a
+different path — so the tick would silently fail to process anything.
+
+Fix: append `pgbouncer=true` to `DATABASE_URL`, which tells Prisma to stop using
+prepared statements. Recorded in `.env.example`. Diagnosed by the integration
+suite: the queue tests pass in isolation but fail with `0A000` once another test
+file has run first in the same process; adding `pgbouncer=true` makes the whole
+suite green regardless of order.
+
 ### Database integration tests are opt-in and refuse a non-empty DB
 
 `pnpm test` stays pure/fast. Integration tests live in

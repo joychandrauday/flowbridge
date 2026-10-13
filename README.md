@@ -149,7 +149,7 @@ pnpm dev                    # http://localhost:3000
 
 | Variable | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | ✅ | Postgres connection string (pooled URL for the app). |
+| `DATABASE_URL` | ✅ | Postgres connection string (pooled URL for the app). Add `pgbouncer=true` when a transaction pooler sits in front (Neon/Supabase/PgBouncer) — the queue's raw claim query otherwise fails with `0A000`. |
 | `NEXTAUTH_SECRET` | ✅ | ≥ 32 random chars. |
 | `NEXTAUTH_URL` | ✅ | e.g. `http://localhost:3000`. |
 | `ENCRYPTION_KEY` | ✅ | 32 bytes, base64. Encrypts integration secrets (AES-256-GCM). |
@@ -236,7 +236,10 @@ pnpm --filter @flowbridge/core test:coverage # coverage gate (≥70%)
 
 ## Deployment
 
-1. Create a Neon (or any) Postgres database; copy the connection string.
+1. Create a Neon (or any) Postgres database; copy the connection string. If it is
+   a **pooled** URL (Neon's `-pooler` host), append `&pgbouncer=true` — the
+   job-claim query is a prepared statement and transaction poolers otherwise
+   reject it with `cached plan must not change result type`.
 2. Deploy `apps/web` to Vercel; set all required env vars.
 3. Run `pnpm db:generate && pnpm db:push` (or `db:migrate:prod`) and `pnpm db:seed`
    against the production database.
