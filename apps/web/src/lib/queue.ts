@@ -61,7 +61,7 @@ export class JobQueue {
       WHERE id IN (
         SELECT id FROM "Job"
         WHERE status = 'PENDING'
-        AND (runAfter IS NULL OR runAfter <= NOW())
+        AND ("runAfter" IS NULL OR "runAfter" <= NOW())
         ORDER BY "runAfter" ASC NULLS FIRST
         LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
