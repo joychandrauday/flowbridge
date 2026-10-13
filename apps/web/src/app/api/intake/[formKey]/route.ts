@@ -5,9 +5,10 @@ import { prisma } from '@flowbridge/db'
 import { Prisma } from '@prisma/client'
 import { JobQueue } from '@/lib/queue'
 import { createRunsForLeadEvent, drainNow } from '@/lib/engine'
+import { createRateLimiter } from '@/lib/rate-limit'
 
-// Rate limiting store (in-memory for now, replace with Vercel KV in production)
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+// Process-local fixed-window limiter (SPEC §3); see lib/rate-limit.ts.
+const rateLimiter = createRateLimiter()
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for')
@@ -15,27 +16,6 @@ function getClientIp(request: NextRequest): string {
     return forwarded.split(',')[0].trim()
   }
   return request.headers.get('x-real-ip') || 'unknown'
-}
-
-function checkRateLimit(
-  key: string,
-  maxSubmissions: number,
-  windowMinutes: number
-): { allowed: boolean; resetAt: number } {
-  const now = Date.now()
-  const entry = rateLimitStore.get(key)
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + windowMinutes * 60 * 1000 })
-    return { allowed: true, resetAt: now + windowMinutes * 60 * 1000 }
-  }
-
-  if (entry.count >= maxSubmissions) {
-    return { allowed: false, resetAt: entry.resetAt }
-  }
-
-  entry.count++
-  return { allowed: true, resetAt: entry.resetAt }
 }
 
 export async function POST(
@@ -101,10 +81,10 @@ export async function POST(
     // Rate limiting
     if (typedForm.settings.rateLimit.enabled) {
       const rateLimitKey = `intake:${formKey}:${ip}`
-      const { allowed, resetAt } = checkRateLimit(
+      const { allowed, resetAt } = rateLimiter.check(
         rateLimitKey,
         typedForm.settings.rateLimit.maxSubmissions,
-        typedForm.settings.rateLimit.windowMinutes
+        typedForm.settings.rateLimit.windowMinutes * 60 * 1000
       )
 
       if (!allowed) {

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { verifySignature } from '@flowbridge/core'
 import { JobQueue } from '@/lib/queue'
 import { createRunsForLeadEvent, drainNow } from '@/lib/engine'
+import { createRateLimiter } from '@/lib/rate-limit'
 
 /**
  * Generic webhook intake (SPEC.md §2, §9): POST /api/webhooks/:workspaceKey/:source
@@ -19,23 +20,12 @@ const MAX_BODY_BYTES = 100_000
 const RATE_LIMIT_MAX = 120
 const RATE_LIMIT_WINDOW_MS = 60_000
 
-const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+const rateLimiter = createRateLimiter()
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) return forwarded.split(',')[0].trim()
   return request.headers.get('x-real-ip') || 'unknown'
-}
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now()
-  const entry = rateLimitStore.get(key)
-  if (!entry || now > entry.resetAt) {
-    rateLimitStore.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
-    return true
-  }
-  entry.count += 1
-  return entry.count <= RATE_LIMIT_MAX
 }
 
 /** Permissive payload schema — unknown keys flow through into the lead's `data`. */
@@ -67,7 +57,8 @@ export async function POST(
     return NextResponse.json({ error: 'Unknown workspace' }, { status: 404 })
   }
 
-  if (!checkRateLimit(`webhook:${workspace.id}:${ip}`)) {
+  const { allowed } = rateLimiter.check(`webhook:${workspace.id}:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS)
+  if (!allowed) {
     return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
   }
 
