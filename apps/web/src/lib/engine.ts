@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client'
 import { WorkflowDefinitionSchema } from '@flowbridge/core/schema'
-import { evaluateConditions, redactSecrets } from '@flowbridge/core'
+import { evaluateConditions, redactSecrets, matchesCron } from '@flowbridge/core'
 import { JobQueue, JobPayload } from './queue'
 import { executors, StepResult } from './executors'
 import { resolveIntegrations } from './integrations'
@@ -122,6 +122,56 @@ export async function createRunsForLeadEvent(
     } catch (error) {
       // Idempotency guard: @@unique([workflowId, eventId]) means the same
       // domain event must never produce two runs.
+      if ((error as { code?: string }).code === 'P2002') continue
+      throw error
+    }
+  }
+  return runIds
+}
+
+/**
+ * Creates runs for enabled `lead.status_changed` workflows whose trigger config
+ * matches the transition. Called inside the status-update transaction so the
+ * run cannot be lost (SPEC §2.1).
+ */
+export async function createRunsForLeadStatusChange(
+  tx: Prisma.TransactionClient,
+  queue: JobQueue,
+  input: { workspaceId: string; leadId: string; eventId: string; from: string; to: string }
+): Promise<string[]> {
+  const workflows = await tx.workflow.findMany({
+    where: { workspaceId: input.workspaceId, enabled: true },
+    select: { id: true, version: true, definition: true },
+  })
+
+  const runIds: string[] = []
+  for (const workflow of workflows) {
+    let parsed: ReturnType<typeof WorkflowDefinitionSchema.parse> | null = null
+    try {
+      parsed = WorkflowDefinitionSchema.parse(workflow.definition)
+    } catch {
+      continue
+    }
+    if (parsed.trigger.type !== 'lead.status_changed') continue
+
+    const { from, to } = parsed.trigger.config
+    if (from && from !== input.from) continue
+    if (to && to !== input.to) continue
+
+    try {
+      const run = await tx.workflowRun.create({
+        data: {
+          workspaceId: input.workspaceId,
+          workflowId: workflow.id,
+          workflowVersion: workflow.version,
+          eventId: input.eventId,
+          leadId: input.leadId,
+          status: 'QUEUED',
+        },
+      })
+      await queue.enqueueTx(tx, { workflowRunId: run.id, stepType: 'workflow_run', attempt: 1 })
+      runIds.push(run.id)
+    } catch (error) {
       if ((error as { code?: string }).code === 'P2002') continue
       throw error
     }
@@ -384,6 +434,120 @@ export async function processRetryJob(prisma: PrismaClient, queue: JobQueue, pay
   return true
 }
 
+const MAX_LEADS_PER_SWEEP = 50
+
+interface TriggerRunInput {
+  workspaceId: string
+  workflowId: string
+  workflowVersion: number
+  leadId: string | null
+  eventId: string
+  source: string
+}
+
+/** Create an IntakeEvent + run + job for a time trigger. Returns 1, or 0 if already triggered. */
+async function createTriggerRun(
+  prisma: PrismaClient,
+  queue: JobQueue,
+  input: TriggerRunInput
+): Promise<number> {
+  try {
+    await prisma.$transaction(async (tx) => {
+      const event = await tx.intakeEvent.create({
+        data: {
+          workspaceId: input.workspaceId,
+          source: input.source,
+          leadId: input.leadId,
+          payload: {} as Prisma.InputJsonValue,
+        },
+      })
+      const run = await tx.workflowRun.create({
+        data: {
+          workspaceId: input.workspaceId,
+          workflowId: input.workflowId,
+          workflowVersion: input.workflowVersion,
+          eventId: input.eventId,
+          leadId: input.leadId,
+          status: 'QUEUED',
+        },
+      })
+      await queue.enqueueTx(tx, { workflowRunId: run.id, stepType: 'workflow_run', attempt: 1 })
+    })
+    return 1
+  } catch (error) {
+    // @@unique([workflowId, eventId]) — already triggered for this window.
+    if ((error as { code?: string }).code === 'P2002') return 0
+    throw error
+  }
+}
+
+/**
+ * Sweeps time-based triggers and creates runs for matches (called each tick):
+ *
+ * - `lead.no_activity_for`: leads whose `lastActivityAt` predates the threshold.
+ *   `eventId` includes the activity timestamp, so a lead re-triggers only after
+ *   new activity resets the window.
+ * - `schedule`: cron matches the current UTC minute; `eventId` is the ISO minute
+ *   so each scheduled minute runs exactly once.
+ *
+ * Idempotent by construction. Returns how many runs were created.
+ */
+export async function runTimeTriggers(
+  prisma: PrismaClient,
+  queue: JobQueue,
+  now: Date = new Date()
+): Promise<number> {
+  const workflows = await prisma.workflow.findMany({
+    where: { enabled: true },
+    select: { id: true, workspaceId: true, version: true, definition: true },
+  })
+
+  let created = 0
+  const isoMinute = now.toISOString().slice(0, 16)
+
+  for (const workflow of workflows) {
+    let definition
+    try {
+      definition = WorkflowDefinitionSchema.parse(workflow.definition)
+    } catch {
+      continue // invalid definition — skip, never crash the sweep
+    }
+
+    if (definition.trigger.type === 'lead.no_activity_for') {
+      const minutes = definition.trigger.config.minutes
+      const cutoff = new Date(now.getTime() - minutes * 60_000)
+      const leads = await prisma.lead.findMany({
+        where: { workspaceId: workflow.workspaceId, lastActivityAt: { lt: cutoff } },
+        select: { id: true, lastActivityAt: true },
+        orderBy: { lastActivityAt: 'asc' },
+        take: MAX_LEADS_PER_SWEEP,
+      })
+      for (const lead of leads) {
+        created += await createTriggerRun(prisma, queue, {
+          workspaceId: workflow.workspaceId,
+          workflowId: workflow.id,
+          workflowVersion: workflow.version,
+          leadId: lead.id,
+          eventId: `noactivity:${lead.id}:${workflow.id}:${lead.lastActivityAt.getTime()}`,
+          source: 'no_activity',
+        })
+      }
+    } else if (definition.trigger.type === 'schedule') {
+      if (!matchesCron(definition.trigger.config.cron, now)) continue
+      created += await createTriggerRun(prisma, queue, {
+        workspaceId: workflow.workspaceId,
+        workflowId: workflow.id,
+        workflowVersion: workflow.version,
+        leadId: null,
+        eventId: `schedule:${workflow.id}:${isoMinute}`,
+        source: 'schedule',
+      })
+    }
+  }
+
+  return created
+}
+
 /** Cron entrypoint: reclaim expired locks, claim up to maxJobs, process. */
 export async function runTick(prisma: PrismaClient, queue: JobQueue, options?: TickOptions): Promise<{
   processed: number
@@ -392,6 +556,15 @@ export async function runTick(prisma: PrismaClient, queue: JobQueue, options?: T
 }> {
   const { timeBudgetMs, maxJobs, lockTimeoutMs } = { ...tickDefaults(), ...options }
   const startTime = Date.now()
+
+  // Time-based triggers first (idempotent; see runTimeTriggers). A failure here
+  // must never block job processing.
+  let triggered = 0
+  try {
+    triggered = await runTimeTriggers(prisma, queue)
+  } catch (error) {
+    console.error('[tick] time-trigger sweep failed:', error)
+  }
 
   await prisma.$executeRaw`
     UPDATE "Job"
@@ -427,7 +600,7 @@ export async function runTick(prisma: PrismaClient, queue: JobQueue, options?: T
     }
   }
 
-  return { processed, elapsedMs: Date.now() - startTime, stats: await queue.getStats() }
+  return { processed, elapsedMs: Date.now() - startTime, stats: { ...(await queue.getStats()), triggered } }
 }
 
 /** Best-effort immediate first drain after intake. Failures are logged and the cron tick is the safety net. */
