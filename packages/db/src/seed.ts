@@ -1,7 +1,7 @@
 import { prisma } from './client'
 import { hash } from 'bcryptjs'
 import { Prisma } from '@prisma/client'
-import { deriveEncryptionKey, encryptJsonWithKey, isEncryptedPayload } from '@flowbridge/core'
+import { deriveEncryptionKey, encryptJsonWithKey } from '@flowbridge/core'
 import { DEMO_WORKFLOWS } from './demo-workflows'
 
 /**
@@ -86,7 +86,7 @@ async function main() {
   console.log('✅ Users created')
 
   // Create members
-  const ownerMember = await prisma.member.upsert({
+  await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: owner.id } },
     update: { role: 'OWNER', available: true },
     create: { workspaceId: workspace.id, userId: owner.id, role: 'OWNER', available: true },
@@ -104,7 +104,7 @@ async function main() {
     create: { workspaceId: workspace.id, userId: agent1.id, role: 'AGENT', available: true, skills: ['english', 'spanish'] },
   })
 
-  const agent2Member = await prisma.member.upsert({
+  await prisma.member.upsert({
     where: { workspaceId_userId: { workspaceId: workspace.id, userId: agent2.id } },
     update: { role: 'AGENT', available: true, skills: ['english', 'french'] },
     create: { workspaceId: workspace.id, userId: agent2.id, role: 'AGENT', available: true, skills: ['english', 'french'] },
