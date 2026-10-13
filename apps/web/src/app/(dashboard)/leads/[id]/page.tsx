@@ -77,6 +77,15 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
   })
   if (!lead) notFound()
 
+  // SPEC §3: agents may only open leads assigned to them.
+  if (session.user.role === 'AGENT') {
+    const me = await prisma.member.findFirst({
+      where: { workspaceId, userId: session.user.id },
+      select: { id: true },
+    })
+    if (!me || lead.assigneeId !== me.id) notFound()
+  }
+
   const assignees = await prisma.member.findMany({
     where: { workspaceId },
     select: { id: true, user: { select: { name: true } } },

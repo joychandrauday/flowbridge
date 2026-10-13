@@ -37,8 +37,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const status = searchParams.status === 'DONE' || searchParams.status === 'OPEN' ? searchParams.status : 'OPEN'
   const assigneeId = searchParams.assigneeId || undefined
 
+  // SPEC §3: agents only see tasks assigned to them. Owners/admins see all.
+  const isAgent = session.user.role === 'AGENT'
+  const viewer = isAgent
+    ? await prisma.member.findFirst({
+        where: { workspaceId, userId: session.user.id },
+        select: { id: true },
+      })
+    : null
+
   const where: Prisma.TaskWhereInput = { workspaceId, status }
-  if (assigneeId) where.assigneeId = assigneeId
+  if (isAgent) where.assigneeId = viewer?.id ?? '__no_member__'
+  else if (assigneeId) where.assigneeId = assigneeId
 
   const [total, tasks, assignees] = await Promise.all([
     prisma.task.count({ where }),

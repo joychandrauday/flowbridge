@@ -39,7 +39,17 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
   const assigneeId = searchParams.assigneeId || undefined
   const sort = searchParams.sort ?? 'newest'
 
-  const where: Prisma.LeadWhereInput = { workspaceId }
+  // SPEC §3: agents only see leads assigned to them. Owners/admins see all.
+  const isAgent = session.user.role === 'AGENT'
+  const viewer = isAgent
+    ? await prisma.member.findFirst({
+        where: { workspaceId, userId: session.user.id },
+        select: { id: true },
+      })
+    : null
+  const agentScope = isAgent ? { assigneeId: viewer?.id ?? '__no_member__' } : {}
+
+  const where: Prisma.LeadWhereInput = { workspaceId, ...agentScope }
   if (q) {
     where.OR = [
       { name: { contains: q, mode: 'insensitive' } },
@@ -48,7 +58,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
     ]
   }
   if (status) where.status = status
-  if (assigneeId) where.assigneeId = assigneeId
+  if (assigneeId && !isAgent) where.assigneeId = assigneeId
 
   let orderBy: Prisma.LeadOrderByWithRelationInput
   switch (sort) {
@@ -64,8 +74,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
 
   const [total, newLeads, openTasks, leads, assignees] = await Promise.all([
     prisma.lead.count({ where }),
-    prisma.lead.count({ where: { workspaceId, status: 'NEW' } }),
-    prisma.task.count({ where: { workspaceId, status: 'OPEN' } }),
+    prisma.lead.count({ where: { workspaceId, status: 'NEW', ...agentScope } }),
+    prisma.task.count({ where: { workspaceId, status: 'OPEN', ...agentScope } }),
     prisma.lead.findMany({
       where,
       orderBy,

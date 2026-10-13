@@ -26,9 +26,12 @@ export async function updateLeadStatus(formData: FormData) {
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
   if (!lead) return
-  if (lead.status === status) return // no-op change
 
   const actor = await prisma.member.findFirst({ where: { userId: session.user.id, workspaceId } })
+  // Agents may only touch leads assigned to them (SPEC §3).
+  if (session.user.role === 'AGENT' && (!actor || lead.assigneeId !== actor.id)) return
+  if (lead.status === status) return // no-op change
+
   const queue = new JobQueue(prisma, `worker-status-${Date.now()}`)
 
   await prisma.$transaction(async (tx) => {
@@ -83,6 +86,8 @@ export async function addLeadNote(formData: FormData) {
   if (!lead) return
 
   const actor = await prisma.member.findFirst({ where: { userId: session.user.id, workspaceId } })
+  // Agents may only annotate leads assigned to them (SPEC §3).
+  if (session.user.role === 'AGENT' && (!actor || lead.assigneeId !== actor.id)) return
 
   await prisma.$transaction([
     prisma.lead.update({ where: { id: lead.id }, data: { lastActivityAt: new Date() } }),
@@ -111,6 +116,9 @@ export async function updateLeadAssignee(formData: FormData) {
   const assigneeIdRaw = formData.get('assigneeId')
   if (typeof leadId !== 'string' || typeof assigneeIdRaw !== 'string') return
   const assigneeId = assigneeIdRaw || null
+
+  // Reassignment is an Owner/Admin action (SPEC §3): agents cannot move leads.
+  if (session.user.role === 'AGENT') return
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
   if (!lead) return
