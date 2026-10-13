@@ -13,6 +13,11 @@ const TEST_DB = process.env.TEST_DATABASE_URL
  *   pnpm --filter @flowbridge/db exec prisma db push   # with TEST_DATABASE_URL set
  *   pnpm --filter @flowbridge/web test:integration
  *
+ * If the database is behind a transaction pooler (Neon, Supabase, PgBouncer),
+ * include `pgbouncer=true` in the URL — the claim query is a raw prepared
+ * statement and otherwise fails with `0A000 cached plan must not change result
+ * type` (see `docs/decisions.md`).
+ *
  * The suite refuses to run against a database that already has workflows, so it
  * can never mutate seeded demo data.
  */
@@ -41,13 +46,17 @@ describe.skipIf(!TEST_DB)('JobQueue against a real database', () => {
         'TEST_DATABASE_URL points at a non-empty database. Integration tests need a scratch DB.'
       )
     }
+
+    // `Job` rows have no tenant FK, so other integration files can leave jobs
+    // behind. `claim()` is global; clear them so this file's assertions are
+    // deterministic regardless of file order.
+    await prisma.job.deleteMany({})
   })
 
   afterAll(async () => {
     if (prisma && created.length) {
       await prisma.job.deleteMany({ where: { id: { in: created } } })
     }
-    await prisma?.$disconnect()
   })
 
   /** Insert a job directly so the test does not depend on the engine fixtures. */

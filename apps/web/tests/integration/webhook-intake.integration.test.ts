@@ -7,13 +7,17 @@ const TEST_DB = process.env.TEST_DATABASE_URL
 
 /**
  * Webhook intake integration test (AGENTS §4): the signature is verified over
- * the RAW body before parsing, and a valid request becomes a lead in one
- * transaction. Runs against a scratch database — see `queue.integration.test.ts`.
+ * the RAW body before parsing, a valid request becomes a lead, and the
+ * `lead.created` workflow runs end to end. Runs against a scratch database —
+ * see `queue.integration.test.ts`.
  */
 describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
   let prisma: PrismaClient
+  let engine: typeof import('../../src/lib/engine')
+  let queueModule: typeof import('../../src/lib/queue')
   let POST: typeof import('../../src/app/api/webhooks/[workspaceKey]/[source]/route').POST
   let workspaceId: string
+  let workflowId: string
   const slug = `webhook-${Date.now()}`
   const secret = 'test-webhook-secret'
   const sharedEmail = `grace-${Date.now()}@example.com`
@@ -24,6 +28,8 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
 
     const db = await import('@flowbridge/db')
     const route = await import('../../src/app/api/webhooks/[workspaceKey]/[source]/route')
+    engine = await import('../../src/lib/engine')
+    queueModule = await import('../../src/lib/queue')
     prisma = db.prisma as PrismaClient
     POST = route.POST
 
@@ -31,6 +37,26 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
       data: { name: 'Webhook Test', slug, webhookSecret: secret },
     })
     workspaceId = workspace.id
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        workspaceId,
+        name: 'Mark new leads contacted',
+        definition: {
+          trigger: { type: 'lead.created', config: {} },
+          conditions: [],
+          steps: [
+            {
+              id: 'mark_contacted',
+              type: 'update_field',
+              config: { field: 'status', value: 'CONTACTED' },
+              onFailure: 'stop',
+            },
+          ],
+        },
+      },
+    })
+    workflowId = workflow.id
   })
 
   afterAll(async () => {
@@ -48,6 +74,17 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
       }),
       { params: { workspaceKey: slug, source: 'stripe' } }
     )
+  }
+
+  /** The route drains best-effort; poll briefly, then force the run ourselves. */
+  async function settleRun(runId: string) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const run = await prisma.workflowRun.findUniqueOrThrow({ where: { id: runId } })
+      if (run.status === 'SUCCEEDED' || run.status === 'FAILED') return run
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    await engine.executeRun(prisma, new queueModule.JobQueue(prisma, `test-${Date.now()}`), runId)
+    return prisma.workflowRun.findUniqueOrThrow({ where: { id: runId } })
   }
 
   it('rejects a payload with an invalid signature (401) and creates nothing', async () => {
@@ -71,6 +108,26 @@ describe.skipIf(!TEST_DB)('webhook intake (integration)', () => {
     expect(lead.name).toBe('Grace Hopper')
     expect(lead.email).toBe(sharedEmail)
     expect(lead.source).toBe('stripe')
+  })
+
+  it('runs the lead.created workflow to SUCCEEDED and applies the step', async () => {
+    const email = `ada-${Date.now()}@example.com`
+    const raw = JSON.stringify({ name: 'Ada Byron', email })
+    const response = await post(raw, `sha256=${signPayload(raw, secret)}`)
+    expect(response.status).toBe(202)
+
+    const { leadId } = (await response.json()) as { leadId: string }
+    const created = await prisma.workflowRun.findFirstOrThrow({ where: { leadId, workflowId } })
+
+    const run = await settleRun(created.id)
+    expect(run.status).toBe('SUCCEEDED')
+
+    const step = await prisma.runStep.findFirstOrThrow({ where: { runId: created.id } })
+    expect(step.stepKey).toBe('mark_contacted')
+    expect(step.status).toBe('SUCCEEDED')
+
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } })
+    expect(lead.status).toBe('CONTACTED')
   })
 
   it('deduplicates a repeated email instead of failing (200)', async () => {
