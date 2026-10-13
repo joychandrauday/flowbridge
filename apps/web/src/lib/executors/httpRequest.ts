@@ -1,38 +1,29 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { isBlockedAddress, isBlockedHostname } from '@flowbridge/core'
 
-const PRIVATE_IP_RANGES = [
-  /^10\./,
-  /^127\./,
-  /^169\.254\./,
-  /^192\.168\./,
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-  /^::1$/,
-  /^fe80::/,
-  /^fc00:/,
-  /^fd00:/,
-]
-
-const CLOUD_METADATA_IPS = ['169.254.169.254', '169.254.170.2', 'fd00:ec2::254']
-
+/**
+ * Resolves a URL's host and rejects anything that could reach the host's
+ * internal network (SSRF guard, SPEC §3). Re-run for every redirect hop.
+ */
 async function resolveAndValidateHost(url: string): Promise<string> {
   const parsed = new URL(url)
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Blocked protocol: ${parsed.protocol}`)
+  }
+
   const hostname = parsed.hostname
+  if (isBlockedHostname(hostname)) {
+    throw new Error(`Blocked host: ${hostname}`)
+  }
 
   const { lookup } = await import('dns/promises')
   const result = await lookup(hostname, { all: true })
 
   for (const entry of result) {
-    const ip = entry.address
-
-    for (const range of PRIVATE_IP_RANGES) {
-      if (range.test(ip)) {
-        throw new Error(`Blocked private IP range: ${ip}`)
-      }
-    }
-
-    if (CLOUD_METADATA_IPS.includes(ip)) {
-      throw new Error(`Blocked cloud metadata IP: ${ip}`)
+    if (isBlockedAddress(entry.address)) {
+      throw new Error(`Blocked private/reserved address: ${entry.address}`)
     }
   }
 
