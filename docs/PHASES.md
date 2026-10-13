@@ -58,7 +58,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Lead detail view: timeline (intake, activity, status changes), data JSON, tasks
 - [x] Lead update field/status actions + activity logging (server actions: `updateLeadStatus`, `updateLeadAssignee`, `addLeadNote`)
 - [x] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs; per-row transactions, email dedupe, 500KB/2000-row caps) + `/leads/import` UI + pure `parseCsv` tests (8)
-- [ ] Scoped-query audit: every tenant query via `scoped()` (note: `findUnique` injection needs a fix)
+- [x] Scoped-query audit: every dashboard/route tenant query is either `scoped()` or carries `workspaceId`; by-id mutations are always preceded by a scoped read (audited all `update`/`delete`/`findUnique` sites)
 - [ ] Tests: cross-tenant isolation on leads, import idempotency
 
 ## Phase 4 — Workflows UI ✅ (pushed: `9a2a031`)
@@ -87,7 +87,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Middleware: `/f/` public; `/embed`, `/api/webhooks` already public
 - [x] Webhook: workspace-by-slug, per-IP rate limit, 100KB cap, zod payload (passthrough), P2002 → dedupe 200
 - [ ] Multi-form support / field-to-lead mapping, dedupe by email setting
-- [ ] Honeypot + per-IP/per-form rate limiting on intake (verify present + test)
+- [x] Honeypot + per-IP/per-form rate limiting on intake (extracted to testable `lib/rate-limit.ts`, shared with the webhook route; unit-tested)
 - [ ] Tests: HMAC failure/success (done), webhook route integration, embed render
 
 ## Phase 7 — Time triggers ✅

@@ -43,6 +43,16 @@ route (form-scoped/public + rate limited + honeypot), `/api/internal/tick`
 `publicRoutes` allow-list inside the handler, so middleware still sees it and
 lets it pass without a session.
 
+### Rate limiting is in-process (swap for KV later)
+
+Public intake and webhook routes share one small fixed-window limiter
+(`apps/web/src/lib/rate-limit.ts`), keyed by `formKey`/`workspace` + client IP.
+It is process-local — correct for a single Next.js instance (the deployment we
+target), but a horizontally-scaled deployment would let each instance count
+independently. `KV_REST_API_*` env vars are reserved for a Vercel KV / Upstash
+swap; the interface (`check(key, max, windowMs)`) is the seam. The limiter is
+unit-tested with an injectable clock rather than a real timer.
+
 ---
 
 ## Data model
