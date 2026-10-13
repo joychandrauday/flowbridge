@@ -68,3 +68,60 @@ export function rowsToRecords(rows: string[][]): Record<string, string>[] {
   }
   return records
 }
+
+/** Which CSV column supplies each built-in lead field (SPEC §4.1 mapping). */
+export interface LeadFieldMapping {
+  name?: string
+  email?: string
+  phone?: string
+}
+
+export interface MappedLeadRow {
+  name: string | null
+  email: string | null
+  phone: string | null
+  /** Full source row (normalized keys → values) stored on the lead's custom data. */
+  data: Record<string, string>
+}
+
+function pick(record: Record<string, string>, key?: string): string | null {
+  if (!key) return null
+  return record[key] ?? null
+}
+
+/** Apply a column mapping to parsed records. Pure. */
+export function applyMapping(
+  records: Record<string, string>[],
+  mapping: LeadFieldMapping
+): MappedLeadRow[] {
+  return records.map((record) => ({
+    name: pick(record, mapping.name),
+    email: pick(record, mapping.email),
+    phone: pick(record, mapping.phone),
+    data: { ...record },
+  }))
+}
+
+const NAME_HEADERS = ['name', 'full_name', 'fullname', 'first_name', 'contact_name', 'lead_name']
+const EMAIL_HEADERS = ['email', 'email_address', 'e-mail', 'e_mail', 'mail']
+const PHONE_HEADERS = ['phone', 'phone_number', 'mobile', 'mobile_number', 'telephone', 'cell']
+
+function firstMatchingHeader(headers: string[], candidates: string[]): string | undefined {
+  for (const header of headers) {
+    if (candidates.includes(header)) return header
+  }
+  return undefined
+}
+
+/**
+ * Best-effort auto-mapping from normalized header keys, used to pre-fill the
+ * column mapping UI. Pure.
+ */
+export function guessMapping(headers: string[]): LeadFieldMapping {
+  const normalized = headers.map(normalizeHeader)
+  return {
+    name: firstMatchingHeader(normalized, NAME_HEADERS),
+    email: firstMatchingHeader(normalized, EMAIL_HEADERS),
+    phone: firstMatchingHeader(normalized, PHONE_HEADERS),
+  }
+}

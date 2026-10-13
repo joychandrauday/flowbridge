@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv, normalizeHeader, rowsToRecords } from './csv'
+import {
+  parseCsv,
+  normalizeHeader,
+  rowsToRecords,
+  applyMapping,
+  guessMapping,
+} from './csv'
 
 describe('parseCsv', () => {
   it('parses simple comma-separated rows', () => {
@@ -59,5 +65,56 @@ describe('rowsToRecords', () => {
 
   it('returns [] for a header-only file', () => {
     expect(rowsToRecords([['name', 'email']])).toEqual([])
+  })
+})
+
+describe('guessMapping', () => {
+  it('recognizes common header variants', () => {
+    expect(guessMapping(['Full Name', 'Email Address', 'Mobile'])).toEqual({
+      name: 'full_name',
+      email: 'email_address',
+      phone: 'mobile',
+    })
+  })
+
+  it('leaves a field unmapped when no header matches', () => {
+    expect(guessMapping(['company', 'notes'])).toEqual({
+      name: undefined,
+      email: undefined,
+      phone: undefined,
+    })
+  })
+})
+
+describe('applyMapping', () => {
+  const records: Record<string, string>[] = [
+    { full_name: 'Jane', email_address: 'jane@acme.com', company: 'Acme' },
+    { email_address: 'bob@acme.com', company: 'Acme' },
+  ]
+
+  it('picks the mapped fields and keeps the whole row in data', () => {
+    const mapped = applyMapping(records, {
+      name: 'full_name',
+      email: 'email_address',
+    })
+
+    expect(mapped[0]).toEqual({
+      name: 'Jane',
+      email: 'jane@acme.com',
+      phone: null,
+      data: { full_name: 'Jane', email_address: 'jane@acme.com', company: 'Acme' },
+    })
+    expect(mapped[1].name).toBeNull()
+    expect(mapped[1].phone).toBeNull()
+  })
+
+  it('returns null for unmapped fields and a missing source column', () => {
+    const mapped = applyMapping(records, { name: 'not_a_column' })
+    expect(mapped[0]).toEqual({
+      name: null,
+      email: null,
+      phone: null,
+      data: records[0],
+    })
   })
 })

@@ -25,11 +25,11 @@ export default async function ImportLeadsPage() {
         <CardHeader>
           <CardTitle>Upload a CSV</CardTitle>
           <CardDescription>
-            First row is the header. Use <code className="rounded bg-muted px-1">name</code>,{' '}
-            <code className="rounded bg-muted px-1">email</code>,{' '}
-            <code className="rounded bg-muted px-1">phone</code> for built-in fields; any other
-            column is stored in the lead&apos;s custom data. Rows with an existing email are
-            skipped as duplicates.
+            First row is the header. Pick which column supplies <code className="rounded bg-muted px-1">name</code>,{' '}
+            <code className="rounded bg-muted px-1">email</code> and{' '}
+            <code className="rounded bg-muted px-1">phone</code>; every other column is kept in the
+            lead&apos;s custom data. You&apos;ll see a preview of the first 10 rows before importing,
+            and existing leads (matching email or phone) are skipped as duplicates.
           </CardDescription>
         </CardHeader>
         <CardContent>
