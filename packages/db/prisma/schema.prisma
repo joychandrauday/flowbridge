@@ -284,6 +284,32 @@ model RunStep {
   @@index([status])
 }
 
+model Job {
+  id          String   @id @default(cuid())
+  payload     Json     // JobPayload
+  status      JobStatus @default(PENDING)
+  runAfter    DateTime @default(now())
+  lockedBy    String?
+  lockedAt    DateTime?
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  error       String?
+  output      Json?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, runAfter])
+  @@index([lockedBy])
+}
+
+enum JobStatus {
+  PENDING
+  CLAIMED
+  COMPLETED
+  FAILED
+}
+
 model Integration {
   id        String   @id @default(cuid())
   workspaceId String
