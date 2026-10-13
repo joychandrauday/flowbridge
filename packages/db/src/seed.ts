@@ -180,55 +180,64 @@ async function main() {
       },
     })
 
-    // Create activity
-    await prisma.activity.create({
-      data: {
-        workspaceId: workspace.id,
-        leadId: lead.id,
-        type: 'lead_created',
-        body: `Lead created from ${leadFields.source}`,
-        meta: { source: leadFields.source },
-      },
+    // Create the intake activity once, so re-seeding does not pile up duplicates.
+    const existingActivity = await prisma.activity.findFirst({
+      where: { leadId: lead.id, type: 'lead_created' },
+      select: { id: true },
     })
+    if (!existingActivity) {
+      await prisma.activity.create({
+        data: {
+          workspaceId: workspace.id,
+          leadId: lead.id,
+          type: 'lead_created',
+          body: `Lead created from ${leadFields.source}`,
+          meta: { source: leadFields.source },
+        },
+      })
+    }
   }
 
   console.log('✅ Demo leads created')
 
-  // Create demo tasks
-  const mchenLead = await prisma.lead.findFirst({ where: { email: 'mchen@growth.co' } })
-  const emilyLead = await prisma.lead.findFirst({ where: { email: 'emily@innovate.io' } })
+  // Create demo tasks — only when the workspace has none, so re-seeding is idempotent.
+  const existingTasks = await prisma.task.count({ where: { workspaceId: workspace.id } })
+  if (existingTasks === 0) {
+    const mchenLead = await prisma.lead.findFirst({ where: { email: 'mchen@growth.co' } })
+    const emilyLead = await prisma.lead.findFirst({ where: { email: 'emily@innovate.io' } })
 
-  await prisma.task.createMany({
-    data: [
-      {
-        workspaceId: workspace.id,
-        leadId: mchenLead?.id,
-        title: 'Follow up with Michael Chen',
-        description: 'Discuss enterprise plan options',
-        dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        status: 'OPEN',
-        assigneeId: agent1Member.id,
-      },
-      {
-        workspaceId: workspace.id,
-        leadId: emilyLead?.id,
-        title: 'Send proposal to Emily Rodriguez',
-        description: 'Custom pricing for 50 seats',
-        dueAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
-        status: 'OPEN',
-        assigneeId: agent1Member.id,
-      },
-      {
-        workspaceId: workspace.id,
-        title: 'Update CRM documentation',
-        description: 'Document new workflow patterns',
-        dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        status: 'OPEN',
-        assigneeId: adminMember.id,
-      },
-    ],
-    skipDuplicates: true,
-  })
+    await prisma.task.createMany({
+      data: [
+        {
+          workspaceId: workspace.id,
+          leadId: mchenLead?.id,
+          title: 'Follow up with Michael Chen',
+          description: 'Discuss enterprise plan options',
+          dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          status: 'OPEN',
+          assigneeId: agent1Member.id,
+        },
+        {
+          workspaceId: workspace.id,
+          leadId: emilyLead?.id,
+          title: 'Send proposal to Emily Rodriguez',
+          description: 'Custom pricing for 50 seats',
+          dueAt: new Date(Date.now() + 12 * 60 * 60 * 1000),
+          status: 'OPEN',
+          assigneeId: agent1Member.id,
+        },
+        {
+          workspaceId: workspace.id,
+          title: 'Update CRM documentation',
+          description: 'Document new workflow patterns',
+          dueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: 'OPEN',
+          assigneeId: adminMember.id,
+        },
+      ],
+      skipDuplicates: true,
+    })
+  }
 
   console.log('✅ Demo tasks created')
 
