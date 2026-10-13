@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@flowbridge/core": "workspace:*",
     "@prisma/client": "^5.7.0",
     "bcryptjs": "^2.4.3",
     "zod": "^3.22.4"

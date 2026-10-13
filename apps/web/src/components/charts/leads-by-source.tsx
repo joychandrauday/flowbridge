@@ -1,27 +1,19 @@
 'use client'
 
-import { prisma } from '@/lib/prisma'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts'
 
+export interface LeadsBySourceDatum {
+  name: string
+  value: number
+}
+
 interface LeadsBySourceChartProps {
-  workspaceId: string
+  data: LeadsBySourceDatum[]
 }
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16']
 
-export async function LeadsBySourceChart({ workspaceId }: LeadsBySourceChartProps) {
-  const leadsBySource = await prisma.lead.groupBy({
-    by: ['source'],
-    where: { workspaceId },
-    _count: { source: true },
-    orderBy: { _count: { source: 'desc' } },
-  })
-
-  const data = leadsBySource.map((item) => ({
-    name: item.source,
-    value: item._count.source,
-  }))
-
+export function LeadsBySourceChart({ data }: LeadsBySourceChartProps) {
   if (data.length === 0) {
     return (
       <div className="flex h-64 items-center justify-center">

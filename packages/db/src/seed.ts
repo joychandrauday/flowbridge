@@ -1,5 +1,19 @@
 import { prisma } from './client'
 import { hash } from 'bcryptjs'
+import { deriveEncryptionKey, encryptJsonWithKey, isEncryptedPayload } from '@flowbridge/core'
+
+/**
+ * Encrypt integration configs for storage (SPEC.md §3).
+ * Falls back to plaintext JSON only when ENCRYPTION_KEY is missing (never
+ * in production) so the demo seed still runs locally.
+ */
+function sealConfig(config: Record<string, unknown>): string {
+  const keyMaterial = process.env.ENCRYPTION_KEY
+  if (keyMaterial) {
+    return encryptJsonWithKey(config, deriveEncryptionKey(keyMaterial))
+  }
+  return JSON.stringify(config)
+}
 
 async function main() {
   console.log('🌱 Seeding database...')
@@ -187,7 +201,7 @@ async function main() {
           {
             operator: 'AND',
             conditions: [
-              { field: 'status', operator: 'equals', value: 'NEW' },
+              { field: 'lead.status', operator: 'equals', value: 'NEW' },
             ],
           },
         ],
@@ -307,7 +321,10 @@ async function main() {
       workspaceId: workspace.id,
       type: 'telegram',
       name: 'Demo Bot',
-      configEnc: 'encrypted_placeholder', // Will be replaced with real encryption
+      configEnc: sealConfig({
+        botToken: process.env.TELEGRAM_BOT_TOKEN || 'log-only-demo-mode',
+        defaultChatId: process.env.TELEGRAM_DEFAULT_CHAT_ID || '',
+      }),
     },
   })
 
