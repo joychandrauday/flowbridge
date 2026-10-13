@@ -215,7 +215,7 @@ export async function executeRun(prisma: PrismaClient, queue: JobQueue, workflow
       assignee: run.lead?.assignee,
       workspace: context.workspace,
       trigger: def.trigger,
-    }) as any
+    })
   )
 
   if (!conditionsMet) {
@@ -453,7 +453,7 @@ async function createTriggerRun(
 ): Promise<number> {
   try {
     await prisma.$transaction(async (tx) => {
-      const event = await tx.intakeEvent.create({
+      await tx.intakeEvent.create({
         data: {
           workspaceId: input.workspaceId,
           source: input.source,
