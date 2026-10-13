@@ -192,3 +192,22 @@ it. CI runs them against a `postgres:16` service container.
 compares constant-time, rejects expired keys, bumps `lastUsedAt`, and requires the
 `read:leads` scope. The key's `workspaceId` — never a client value — scopes the
 query. Other endpoints remain session-only for now.
+
+### A failed run is never silent
+
+`markRunFailed` is the single choke point for the `FAILED` transition, so the
+notification lives there: it writes a `run_failed` **activity** on the lead
+(durable, shows in the timeline) and then best-effort messages every `OWNER`
+member over whatever `email`/`telegram` integrations the workspace has. The
+message body is built by a pure `buildRunFailureNotification` in
+`packages/core` (unit-tested); the send is wrapped in `try/catch` so a broken
+notifier can never change the run's outcome. Owners without a configured
+integration still get the activity. This closes the Phase 5 gap and SPEC §13.10.
+
+### `User.telegramChatId` is a real column
+
+`send_telegram` with `sendToRole` read `telegramChatId` off a cast because the
+column did not exist, so role/assignee targeting always fell through to the
+integration default. Added `User.telegramChatId String?` (nullable, additive) and
+the executor now reads the typed field. Fallback order is explicit `chatId` →
+role/assignee lookup → integration `defaultChatId`.

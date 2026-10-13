@@ -49,7 +49,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Encrypted-write path: `settings/actions.ts` `saveIntegration` encrypts via `@flowbridge/core` crypto → `configEnc`; delete scoped to workspace
 - [x] `sendTestEmail` — SMTP (nodemailer) / Resend / log-only providers, decrypted via resolver
 - [x] Client `integration-cards.tsx` per-type forms (email/telegram/slack/http), connect/update/disconnect/test
-- [ ] Telegram default chat / member `telegramChatId` support (schema + db push + executor fallbacks)
+- [x] Telegram default chat / member `telegramChatId` support (schema column on `User` + db push + executor reads the real field)
 - [ ] Tests: round-trip encrypt/configured flag, decrypted resolver for engine
 
 ## Phase 3 — Leads CRM ✅ (pushed: `37f6c0b`)
@@ -70,13 +70,13 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Test button → `runWorkflowManually` (creates IntakeEvent source `manual` + run, enqueues job)
 - [ ] Tests: editor schema round-trip
 
-## Phase 5 — Runs & Tasks ✅ (core; failure-notification pending)
+## Phase 5 — Runs & Tasks ✅
 
 - [x] Runs page: list with status, workflow, lead, duration, filters
 - [x] Run detail: step timeline (PENDING/RUNNING/SUCCEEDED/FAILED), redacted input/output, error banners
 - [x] Retry-from-failed-step: enqueue retry job for that step (`/runs/actions.ts`)
 - [x] Tasks page: queue (due, assignee, lead), complete/dismiss, filter
-- [ ] Failure-notification to Owner when a run fails
+- [x] Failure notification to the Owner when a run fails: durable `run_failed` activity on the lead + best-effort email/Telegram via the configured integrations (pure message builder unit-tested; engine integration test)
 - [ ] Tests: run history rendering, retry replay correctness
 
 ## Phase 6 — Intake breadth (in progress)
