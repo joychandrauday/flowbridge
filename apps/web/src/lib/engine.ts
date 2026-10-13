@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from '@prisma/client'
 import { WorkflowDefinitionSchema } from '@flowbridge/core/schema'
-import { evaluateConditions, redactSecrets, matchesCron } from '@flowbridge/core'
+import { evaluateConditions, redactSecrets, matchesCron, buildRunFailureNotification } from '@flowbridge/core'
 import { JobQueue, JobPayload } from './queue'
 import { executors, StepResult } from './executors'
 import { resolveIntegrations } from './integrations'
@@ -75,11 +75,73 @@ function getDefinition(run: NonNullable<Awaited<ReturnType<typeof loadRun>>>) {
   return run.workflow.definition as Record<string, unknown>
 }
 
+/**
+ * When a run is marked FAILED, leave a durable trace on the lead and best-effort
+ * notify the workspace Owners (SPEC §13.10). Never throws: a failed notification
+ * must not change the run's outcome.
+ */
+async function notifyRunFailure(prisma: PrismaClient, runId: string, error: string): Promise<void> {
+  try {
+    const run = await loadRun(prisma, runId)
+    if (!run) return
+
+    // Durable trace — "never silently swallow a failed automation".
+    if (run.leadId) {
+      await prisma.activity.create({
+        data: {
+          workspaceId: run.workspaceId,
+          leadId: run.leadId,
+          type: 'run_failed',
+          body: `Automation "${run.workflow.name}" failed: ${error}`,
+          meta: { runId: run.id, workflowId: run.workflowId, error },
+        },
+      })
+    }
+
+    const owners = await prisma.member.findMany({
+      where: { workspaceId: run.workspaceId, role: 'OWNER' },
+      select: { user: { select: { email: true, telegramChatId: true } } },
+    })
+    if (owners.length === 0) return
+
+    const context = await buildContext(prisma, run)
+    if (!context) return
+
+    const { subject, body } = buildRunFailureNotification({
+      workflowName: run.workflow.name,
+      error,
+      runId: run.id,
+      leadName: run.lead?.name,
+      leadEmail: run.lead?.email,
+      baseUrl: process.env.NEXT_PUBLIC_APP_URL,
+    })
+
+    const hasEmail = context.integrations.some((integration) => integration.type === 'email')
+    const hasTelegram = context.integrations.some((integration) => integration.type === 'telegram')
+
+    for (const owner of owners) {
+      if (hasEmail && owner.user.email) {
+        await executors.send_email
+          .execute({ to: owner.user.email, subject, text: body }, context)
+          .catch(() => undefined)
+      }
+      if (hasTelegram && owner.user.telegramChatId) {
+        await executors.send_telegram
+          .execute({ chatId: owner.user.telegramChatId, message: body }, context)
+          .catch(() => undefined)
+      }
+    }
+  } catch (notificationError) {
+    console.error('[engine] failure notification failed:', notificationError)
+  }
+}
+
 async function markRunFailed(prisma: PrismaClient, runId: string, error: string): Promise<void> {
   await prisma.workflowRun.update({
     where: { id: runId },
     data: { status: 'FAILED', error, finishedAt: new Date() },
   })
+  await notifyRunFailure(prisma, runId, error)
 }
 
 /**
