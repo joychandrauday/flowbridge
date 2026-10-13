@@ -43,12 +43,13 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
 ## Phase 8a — Registration & onboarding ✅ (pushed: `34933df`)
 
-## Phase 2 — Integrations
+## Phase 2 — Integrations ✅ (pushed: `3d08664`)
 
-- [ ] `apps/web/src/app/(dashboard)/settings/integrations/page.tsx` — list (configured flag) + connect/disconnect
-- [ ] Encrypted-write path: save `configEnc` via `@flowbridge/core` crypto, never store/return plaintext
+- [x] `apps/web/src/app/(dashboard)/settings/page.tsx` — Integrations / Members / API keys tabs (configured flag, never plaintext)
+- [x] Encrypted-write path: `settings/actions.ts` `saveIntegration` encrypts via `@flowbridge/core` crypto → `configEnc`; delete scoped to workspace
+- [x] `sendTestEmail` — SMTP (nodemailer) / Resend / log-only providers, decrypted via resolver
+- [x] Client `integration-cards.tsx` per-type forms (email/telegram/slack/http), connect/update/disconnect/test
 - [ ] Telegram default chat / member `telegramChatId` support (schema + db push + executor fallbacks)
-- [ ] API routes for integrations CRUD (server-action or route, auth'd, scoped)
 - [ ] Tests: round-trip encrypt/configured flag, decrypted resolver for engine
 
 ## Phase 3 — Leads CRM ✅ (pushed: `37f6c0b`)
@@ -56,17 +57,17 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Leads page: table (server-side pagination/sort/filter), saved filters
 - [x] Lead detail view: timeline (intake, activity, status changes), data JSON, tasks
 - [x] Lead update field/status actions + activity logging (server actions: `updateLeadStatus`, `updateLeadAssignee`, `addLeadNote`)
-- [ ] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs)
+- [x] CSV import (`POST /api/leads/import`) → reused intake pipeline (IntakeEvent + Lead + runs; per-row transactions, email dedupe, 500KB/2000-row caps) + `/leads/import` UI + pure `parseCsv` tests (8)
 - [ ] Scoped-query audit: every tenant query via `scoped()` (note: `findUnique` injection needs a fix)
 - [ ] Tests: cross-tenant isolation on leads, import idempotency
 
-## Phase 4 — Workflows UI ✅ (list) / [ ] editor
+## Phase 4 — Workflows UI ✅ (pushed: `9a2a031`)
 
 - [x] Workflows list page (enable/disable toggle, version badge, run counts, per-workflow run filter)
-- [ ] Workflow editor: vertical stepper (Trigger → Conditions → Actions with `+`), live JSON preview drawer
-- [ ] Create/update workflow via zod-validation; version bump on edit (new runs only)
-- [ ] Step config forms per step type (assign, create_task, update_field, email, telegram, slack, http, delay)
-- [ ] Test button → dry-run or run against a real lead
+- [x] Workflow editor: vertical stepper (Trigger → Conditions → Actions with `+` between), live JSON preview drawer
+- [x] Create/update workflow via zod-validation (`WorkflowDefinitionSchema.parse` server-side); version bump on edit (new runs only)
+- [x] Step config forms per step type (assign, create_task, update_field, email, telegram, slack, http, delay)
+- [x] Test button → `runWorkflowManually` (creates IntakeEvent source `manual` + run, enqueues job)
 - [ ] Tests: editor schema round-trip
 
 ## Phase 5 — Runs & Tasks ✅ (core; failure-notification pending)
@@ -97,8 +98,8 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
 ## Phase 8 — Settings & hardening
 
-- [ ] `/register` page + `/api/register` (done: API created) — page + onboarding flow
-- [ ] `/onboarding` page + `/api/onboarding` (done: API created) — page
+- [x] `/register` page + `/api/register` (done: API + page) — onboarding flow
+- [x] `/onboarding` page + `/api/onboarding` (done: API + page)
 - [ ] Workspace settings: members, roles, availability, workspace slug/name
 - [ ] API keys page (create/revoke, last used)
 - [ ] Deep-clean: remove unused imports/lint warnings, `no-explicit-any` audit in app code
