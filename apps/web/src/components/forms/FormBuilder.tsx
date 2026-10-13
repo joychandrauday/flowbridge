@@ -32,11 +32,6 @@ import {
   GripVertical,
   Plus,
   Trash2,
-  Copy,
-  Eye,
-  Settings,
-  ChevronDown,
-  ChevronUp,
   Save,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -109,12 +104,10 @@ export function FormBuilder({ onSubmit, isSubmitting, initialData }: FormBuilder
   const [activeTab, setActiveTab] = useState<'fields' | 'settings'>('fields')
 
   const {
-    register,
     control,
     handleSubmit,
-    watch,
     setValue,
-    formState: { errors, isDirty },
+    formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
@@ -138,7 +131,7 @@ export function FormBuilder({ onSubmit, isSubmitting, initialData }: FormBuilder
     },
   })
 
-  const { fields, append, remove, move, swap } = useFieldArray({
+  const { fields, append, remove, move } = useFieldArray({
     control,
     name: 'fields',
   })

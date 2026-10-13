@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { createScopedClient } from '@flowbridge/db'
-import { validateForm, type Form } from '@flowbridge/core'
+import { validateForm } from '@flowbridge/core'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 

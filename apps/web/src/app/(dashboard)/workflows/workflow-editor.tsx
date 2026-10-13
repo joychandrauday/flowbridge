@@ -233,10 +233,6 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
     [def]
   )
 
-  const setField = (field: string, value: string) => {
-    setDef((prev) => ({ ...prev, [field]: value }))
-  }
-
   const updateStep = (index: number, patch: Partial<StepDraft>) => {
     setDef((prev) => ({
       ...prev,
