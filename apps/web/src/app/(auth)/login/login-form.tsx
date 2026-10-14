@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from '@/hooks/use-toast'
 
 interface LoginFormProps {
+  /** Same-origin redirect target, validated by the page's `safeCallbackUrl`. */
+  callbackUrl: string
   /** Google is only rendered when a client id + secret are configured. */
   googleEnabled: boolean
   demoEnabled: boolean
@@ -19,10 +21,14 @@ interface LoginFormProps {
   demoPassword: string
 }
 
-export default function LoginForm({ googleEnabled, demoEnabled, demoEmail, demoPassword }: LoginFormProps) {
+export default function LoginForm({
+  callbackUrl,
+  googleEnabled,
+  demoEnabled,
+  demoEmail,
+  demoPassword,
+}: LoginFormProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({ email: '', password: '' })
   const [errors, setErrors] = useState<Record<string, string>>({})
