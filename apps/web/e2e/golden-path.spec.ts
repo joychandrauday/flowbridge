@@ -27,9 +27,15 @@ test.describe('golden path', () => {
     await page.getByRole('link', { name: new RegExp(name) }).click()
     await expect(page).toHaveURL(/\/leads\//)
 
-    // 3. `lead.created` fired: the demo workflow ran and succeeded. The first
-    //    steps run in-process; delays/retries may need up to a minute (tick).
+    // 3. `lead.created` fired: the demo workflow ran to completion. The engine
+    //    processes the run asynchronously (best-effort in-process drain after
+    //    intake, with the cron tick as the durable path) and this page is
+    //    server-rendered with no client polling — so reload until the run reports
+    //    SUCCEEDED instead of asserting once on a stale render.
     await expect(page.getByText('Instant Lead Assignment')).toBeVisible()
-    await expect(page.getByText('SUCCEEDED')).toBeVisible({ timeout: 30_000 })
+    await expect(async () => {
+      await page.reload()
+      await expect(page.getByText('SUCCEEDED')).toBeVisible({ timeout: 3_000 })
+    }).toPass({ timeout: 90_000, intervals: [2_000] })
   })
 })

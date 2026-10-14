@@ -17,7 +17,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  timeout: 60_000,
+  // Generous per-test budget: when E2E runs against `next dev` the *first* hit
+  // on a route pays its on-demand compilation (observed 10-55s per route here,
+  // and the golden path touches the public form, intake, auth, dashboard and
+  // leads in one test). A production build (`next build && next start`) removes
+  // that cost; the timeout only needs to absorb cold compiles in dev.
+  timeout: 180_000,
   expect: { timeout: 15_000 },
   use: {
     baseURL: BASE_URL,
