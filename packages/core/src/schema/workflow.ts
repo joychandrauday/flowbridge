@@ -150,6 +150,12 @@ export const SendSlackStepConfigSchema = z.object({
   integrationName: z.string().optional(),
 }).strict()
 
+export const SendDiscordStepConfigSchema = z.object({
+  message: z.string().min(1),
+  username: z.string().optional(), // Template; overrides the webhook's display name
+  integrationName: z.string().optional(),
+}).strict()
+
 export const HttpRequestStepConfigSchema = z.object({
   url: z.string().url(),
   method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']).default('POST'),
@@ -173,6 +179,7 @@ export const StepConfigSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('send_email'), config: SendEmailStepConfigSchema }),
   z.object({ type: z.literal('send_telegram'), config: SendTelegramStepConfigSchema }),
   z.object({ type: z.literal('send_slack'), config: SendSlackStepConfigSchema }),
+  z.object({ type: z.literal('send_discord'), config: SendDiscordStepConfigSchema }),
   z.object({ type: z.literal('http_request'), config: HttpRequestStepConfigSchema }),
   z.object({ type: z.literal('delay'), config: DelayStepConfigSchema }),
 ])
@@ -204,6 +211,7 @@ export const WorkflowStepSchema = z.discriminatedUnion('type', [
   stepSchemaOf('send_email', SendEmailStepConfigSchema),
   stepSchemaOf('send_telegram', SendTelegramStepConfigSchema),
   stepSchemaOf('send_slack', SendSlackStepConfigSchema),
+  stepSchemaOf('send_discord', SendDiscordStepConfigSchema),
   stepSchemaOf('http_request', HttpRequestStepConfigSchema),
   stepSchemaOf('delay', DelayStepConfigSchema),
 ])

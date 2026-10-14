@@ -31,6 +31,7 @@ type StepType =
   | 'send_email'
   | 'send_telegram'
   | 'send_slack'
+  | 'send_discord'
   | 'http_request'
   | 'delay'
 
@@ -84,6 +85,7 @@ const STEP_TYPES: { value: StepType; label: string }[] = [
   { value: 'send_email', label: 'Send email' },
   { value: 'send_telegram', label: 'Send Telegram' },
   { value: 'send_slack', label: 'Send Slack' },
+  { value: 'send_discord', label: 'Send Discord' },
   { value: 'http_request', label: 'HTTP request' },
   { value: 'delay', label: 'Wait', },
 ]
@@ -143,6 +145,10 @@ const STEP_FIELD_DEFS: Record<StepType, FieldDef[]> = {
     { name: 'message', label: 'Message', type: 'textarea', placeholder: 'New lead: {{lead.name}}' },
     { name: 'channel', label: 'Channel (default: integration)', type: 'text' },
   ],
+  send_discord: [
+    { name: 'message', label: 'Message', type: 'textarea', placeholder: 'New lead: {{lead.name}}' },
+    { name: 'username', label: 'Display name (optional)', type: 'text', placeholder: 'FlowBridge' },
+  ],
   http_request: [
     { name: 'url', label: 'URL', type: 'text', placeholder: 'https://api.acme.com/hook' },
     { name: 'method', label: 'Method', type: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] },
@@ -180,6 +186,8 @@ function defaultStepConfig(type: StepType): Record<string, unknown> {
     case 'send_telegram':
       return { message: 'New lead: {{lead.name}}', parseMode: 'Markdown' }
     case 'send_slack':
+      return { message: 'New lead: {{lead.name}}' }
+    case 'send_discord':
       return { message: 'New lead: {{lead.name}}' }
     case 'http_request':
       return { url: '', method: 'POST' }

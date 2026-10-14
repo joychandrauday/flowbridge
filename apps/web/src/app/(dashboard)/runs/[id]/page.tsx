@@ -54,6 +54,7 @@ function StepTypeIcon({ type }: { type: string }) {
   if (type === 'send_email') return <span className="text-sm">✉️</span>
   if (type === 'send_telegram') return <span className="text-sm">📨</span>
   if (type === 'send_slack') return <span className="text-sm">💬</span>
+  if (type === 'send_discord') return <span className="text-sm">🟪</span>
   if (type === 'http_request') return <span className="text-sm">🌐</span>
   if (type === 'delay') return <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
   if (type === 'assign') return <span className="text-sm">👤</span>

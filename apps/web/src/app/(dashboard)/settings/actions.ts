@@ -35,6 +35,27 @@ const SLACK_CONFIG = z.object({
   webhookUrl: z.string().url(),
 })
 
+const DISCORD_CONFIG = z.object({
+  webhookUrl: z
+    .string()
+    .url()
+    .refine(
+      (value) => {
+        try {
+          const host = new URL(value).hostname.toLowerCase()
+          return (
+            new URL(value).protocol === 'https:' &&
+            (host === 'discord.com' || host.endsWith('.discord.com') ||
+              host === 'discordapp.com' || host.endsWith('.discordapp.com'))
+          )
+        } catch {
+          return false
+        }
+      },
+      { message: 'Webhook URL must be a Discord (discord.com) HTTPS webhook' }
+    ),
+})
+
 const HTTP_CONFIG = z.object({
   baseUrl: z.string().url(),
   authToken: z.string().optional(),
@@ -44,6 +65,7 @@ const CONFIG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   email: EMAIL_CONFIG,
   telegram: TELEGRAM_CONFIG,
   slack: SLACK_CONFIG,
+  discord: DISCORD_CONFIG,
   http: HTTP_CONFIG,
 }
 

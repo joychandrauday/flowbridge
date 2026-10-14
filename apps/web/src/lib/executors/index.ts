@@ -7,6 +7,7 @@ import { sendTelegramExecutor } from './sendTelegram'
 import { httpRequestExecutor } from './httpRequest'
 import { delayExecutor } from './delay'
 import { sendSlackExecutor } from './sendSlack'
+import { sendDiscordExecutor } from './sendDiscord'
 
 export const executors: Record<string, StepExecutor> = {
   assign: assignExecutor,
@@ -15,6 +16,7 @@ export const executors: Record<string, StepExecutor> = {
   send_email: sendEmailExecutor,
   send_telegram: sendTelegramExecutor,
   send_slack: sendSlackExecutor,
+  send_discord: sendDiscordExecutor,
   http_request: httpRequestExecutor,
   delay: delayExecutor,
 }
@@ -32,3 +34,4 @@ export * from './sendTelegram'
 export * from './httpRequest'
 export * from './delay'
 export * from './sendSlack'
+export * from './sendDiscord'

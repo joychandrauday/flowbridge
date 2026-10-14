@@ -68,6 +68,14 @@ const INTEGRATION_TYPES: Record<string, TypeDef> = {
       { name: 'webhookUrl', label: 'Incoming webhook URL', type: 'password', placeholder: 'https://hooks.slack.com/services/…' },
     ],
   },
+  discord: {
+    title: 'Discord',
+    description: 'Post new-lead alerts to a Discord channel via webhook.',
+    defaultName: 'discord',
+    fields: [
+      { name: 'webhookUrl', label: 'Webhook URL', type: 'password', placeholder: 'https://discord.com/api/webhooks/…' },
+    ],
+  },
   http: {
     title: 'HTTP / Webhooks out',
     description: 'Call your own APIs when workflows run.',

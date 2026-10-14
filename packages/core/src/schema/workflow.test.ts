@@ -41,6 +41,7 @@ describe('WorkflowDefinitionSchema', () => {
     ['send_email', { subject: 'Hello {{lead.name}}' }],
     ['send_telegram', { message: 'New lead: {{lead.name}}' }],
     ['send_slack', { message: 'New lead: {{lead.name}}', channel: '#leads' }],
+    ['send_discord', { message: 'New lead: {{lead.name}}', username: 'FlowBridge' }],
     ['http_request', { url: 'https://example.com/hook', method: 'POST' }],
     ['delay', { minutes: 5 }],
   ])('parses a %s step', (type, config) => {
@@ -68,9 +69,18 @@ describe('WorkflowDefinitionSchema', () => {
     const workflow = {
       trigger: { type: 'lead.created', config: {} },
       conditions: [],
-      steps: [{ id: 'step-1', type: 'send_discord', config: {} }],
+      steps: [{ id: 'step-1', type: 'send_sms', config: {} }],
     }
     const result = WorkflowDefinitionSchema.safeParse(workflow)
     expect(result.success).toBe(false)
+  })
+
+  it('rejects a send_discord step without a message', () => {
+    const workflow = {
+      trigger: { type: 'lead.created', config: {} },
+      conditions: [],
+      steps: [{ id: 'step-1', type: 'send_discord', config: { username: 'FlowBridge' } }],
+    }
+    expect(WorkflowDefinitionSchema.safeParse(workflow).success).toBe(false)
   })
 })
