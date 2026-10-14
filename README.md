@@ -263,6 +263,10 @@ Stated honestly, per the project's own rules:
   client's own hosting or a paid plan.
 - **Resend free tier has a daily cap** — an SMTP fallback and a log-only mode are
   provided for demos.
+- **The seeded "Demo Bot" Telegram integration runs in log-only mode** (the seed
+  writes a placeholder token). Notification steps log the rendered message and
+  succeed, so the golden path works offline with no credentials; set a real
+  `TELEGRAM_BOT_TOKEN`/`TELEGRAM_DEFAULT_CHAT_ID` to send for real.
 - **Rate limiting is in-memory** (per-instance). Swap for Upstash/KV before
   relying on it across multiple instances.
 - **`Lead.email` is globally unique** — dedupe is install-wide (single-tenant

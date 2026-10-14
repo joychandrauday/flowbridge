@@ -116,7 +116,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 
 - [x] ≥70% coverage in `packages/core` — **81%** statements / 87% branch; thresholds (70%) enforced in `packages/core/vitest.config.ts`, run in CI via `test:coverage`
 - [x] Integration tests against a real test DB (`apps/web/tests/integration`, opt-in via `TEST_DATABASE_URL`): claim-once (`SKIP LOCKED`), future jobs, **expired-lock reclaim**, failure backoff. Verified against Postgres; CI runs them with a `postgres:16` service. **Found + fixed a real bug: `JobQueue.claim()` used unquoted `runAfter` (Postgres folded it to `runafter`), so claiming never worked against Postgres.**
-- [x] Playwright E2E (`apps/web/e2e`): golden path (submit public form → lead → run `SUCCEEDED`) + agent scoping (SPEC §3)
+- [x] Playwright E2E specs written (`apps/web/e2e`): golden path (submit public form → lead → run `SUCCEEDED`) + agent scoping (SPEC §3). **These were authored here but not executed until Phase 11 — the first real run exposed three latent defects (auth, seeded form, intake), now fixed there.**
 - [x] GitHub Actions CI (`.github/workflows/ci.yml`): lint, typecheck, test, `prisma validate`, core coverage gate, and a Postgres-backed integration job
 - [x] **Found + fixed a second real production bug**: the queue's raw claim query needs `pgbouncer=true` on the connection string, or a transaction pooler (Neon's `-pooler` host) rejects the reused prepared plan with `0A000 cached plan must not change result type` — the tick would silently stop processing. Recorded in `.env.example`, README, and `docs/decisions.md`.
 - [x] README (mermaid architecture diagram, deployment, demo credentials, intake reference, trade-offs per AGENTS §10) + `.env.example`
@@ -143,11 +143,57 @@ and several polish gaps. Tracked here, fixed in small commits.
 - [x] UI shell fixes: removed hardcoded notification badge, fixed dead
       Profile/Account links → single Settings link
 
+## Phase 11 — First real E2E run: the golden path was broken
+
+`pnpm test:e2e` (Phase 9) had never actually been executed against a running app.
+Running it against a live dev server failed all three specs and exposed three
+latent defects — none visible to `typecheck`/`lint`/unit tests, because they only
+manifest at runtime against a real DB + HTTP layer.
+
+- [x] **Auth 500'd on every request when `NEXTAUTH_URL` was set.** On Next 14.0.4
+      + `next-auth@5.0.0-beta.32`, `reqWithEnvURL` calls `new NextRequest(...)`
+      and throws `... is not a constructor` (nextauthjs/next-auth#9922), so every
+      login 500'd. Fix: drop `NEXTAUTH_URL`/`AUTH_URL` (Auth.js v5 auto-detects the
+      host); `.env.example` documents this and adds `AUTH_TRUST_HOST=true` for
+      proxied/self-hosted deployments.
+- [x] **The seeded demo form could never render.** Seed fields violated
+      `FormFieldSchema` (no `id`, `type: 'tel'`, honeypot `label: ''`), so
+      `loadPublicForm` failed closed → `/f/contact-form` 404'd. Fix: pure
+      `packages/db/src/demo-form.ts` + `demo-form.test.ts` drift guard; the seed's
+      form upsert converges on re-seed so existing demo DBs self-heal.
+- [x] **The public intake endpoint 500'd** for any form with `settings = null`
+      (`Cannot read properties of null (reading 'rateLimit')`). Fix: the route
+      parses `fields`/`settings` with the shared core schemas and fails closed
+      `422` on an invalid field config; `createIntakeSchema` /
+      `validateIntakeSubmission` now take `Pick<Form, 'fields' | 'settings'>`,
+      removing the unchecked `as unknown as Form` cast.
+- [x] Added `packages/core/src/schema/form.test.ts` — the form schema and intake
+      validation previously had **zero** tests.
+- [x] **The seeded demo workflow could never reach `SUCCEEDED`**, so the golden
+      path's final assertion was unsatisfiable. `wf_instant_assignment` ends
+      with a `send_telegram` step; the seed wires a placeholder
+      `botToken: 'log-only-demo-mode'`, but the executor had no log-only path —
+      it failed `No Telegram chat ID configured`, and the run then sat in
+      `WAITING` through exponential-backoff retries (1/5/15 min). Fix:
+      `sendTelegramExecutor` now logs the rendered message, records an activity,
+      and succeeds when the token is the demo placeholder (AGENTS §10 "log-only
+      mode for demos"); a real token still requires a resolvable chat id. Added
+      `apps/web/src/lib/executors/sendTelegram.test.ts`.
+- [x] Re-run `pnpm test:e2e` green (golden path + agent scoping) against the
+      fixed app. **3 passed.** The golden-path spec now reload-polls until the
+      run reports `SUCCEEDED`: the engine processes the run asynchronously and
+      the lead page is server-rendered (no client polling), so a single
+      assertion could read a stale `RUNNING` render even though the run
+      succeeded a moment later.
+
+This entry also corrects the Phase 9 tracker, which marked E2E done when it had
+only been written.
+
 ---
 
 ## Cross-cutting
 
 - [x] `pnpm typecheck && pnpm lint && pnpm test` green after **every** phase (verified before each push)
 - [x] One commit per concern; push after each phase completes
-- [x] Demoable golden path from the seeded workspace — covered by `apps/web/e2e/golden-path.spec.ts` (sign up → form → lead → run succeeded → agent scope); the seed was re-verified here. Running Playwright itself needs browsers installed + `pnpm dev`.
+- [x] Demoable golden path from the seeded workspace — `apps/web/e2e/golden-path.spec.ts` passes against a live dev server (verified in Phase 11; its first real run found and fixed three blocking defects, none of which were visible to typecheck/lint/unit tests)
 - [x] `pnpm db:seed` is safe to re-run whenever schema/seed changes (all writes upsert or guarded)

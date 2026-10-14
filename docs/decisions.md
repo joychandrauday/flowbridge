@@ -318,3 +318,96 @@ failing for the user the moment they click "Use template". The create action
 re-validates server-side before writing. Seeded demo workflows are left
 untouched — the gallery only affects new workspaces.
 
+### Public intake and the demo form were silently broken (found by E2E, not unit tests)
+
+Running the Playwright suite for the first time surfaced three defects that
+typecheck/lint/unit tests could not see:
+
+1. **Auth 500s on every request when `NEXTAUTH_URL` is set.** On Next 14.0.4 +
+   `next-auth@5.0.0-beta.32`, `reqWithEnvURL` calls `new NextRequest(...)`, which
+   throws `... is not a constructor` (nextauthjs/next-auth#9922). Fix: **do not
+   set `NEXTAUTH_URL`/`AUTH_URL`** — Auth.js v5 auto-detects the host.
+   `.env.example` now documents this and sets `AUTH_TRUST_HOST=true` for
+   self-hosted/proxied deployments (dev already auto-trusts). Upgrading Next past
+   14.0.4 is the alternative fix, but that is a deliberate stack change we are
+   not making here.
+2. **The seeded demo form could never render.** The seed wrote `Form.fields`
+   that violate `FormFieldSchema` (no `id`, `type: 'tel'`, honeypot `label: ''`),
+   so `loadPublicForm` failed closed and `/f/contact-form` 404'd. Fix: the demo
+   form is now a pure module (`packages/db/src/demo-form.ts`) validated by
+   `demo-form.test.ts`, mirroring the `demo-workflows` drift guard. The seed's
+   form upsert also converges on re-seed (unlike workflows) so existing demo
+   databases self-heal.
+3. **The public intake endpoint 500'd for any form without settings.**
+   `Form.settings` is nullable with no default, but the route did
+   `typedForm.settings.rateLimit.enabled`. Fix: the route now parses `fields` and
+   `settings` with the shared core schemas (`FormFieldSchema` /
+   `FormSettingsSchema`) and fails closed with `422` on an invalid field config
+   instead of crashing. `createIntakeSchema`/`validateIntakeSubmission` now take
+   `Pick<Form, 'fields' | 'settings'>`, removing the unchecked
+   `as unknown as Form` cast.
+4. **The seeded demo workflow could never succeed** (found on the *second* E2E
+   run, once auth/form/intake were fixed and the run actually executed). The
+   `wf_instant_assignment` demo ends with a `send_telegram` step. The seed
+   creates the "Demo Bot" integration with `botToken: 'log-only-demo-mode'` and
+   an empty `defaultChatId` — clearly intending a log-only demo mode — but
+   `sendTelegramExecutor` had no such branch: it returned
+   `No Telegram chat ID configured`, so the step retried with exponential
+   backoff and the run stayed `WAITING` instead of `SUCCEEDED`. Fix: the
+   executor now treats a missing/placeholder token as **log-only demo mode**
+   (log the rendered message, record an activity, return success), matching
+   AGENTS §10 ("provide ... a log-only mode for demos"). A real token still
+   requires a resolvable chat id, preserving the "never silently swallow a
+   failure" rule for real integrations.
+
+`packages/core/src/schema/form.test.ts` was added — the form schema and intake
+validation previously had **zero** tests.
+
+### Observed but out of scope: `settings.redirectUrl` is collected but never honored
+
+The form builder collects `settings.redirectUrl` (`FormBuilder.tsx`), but
+`loadPublicForm` doesn't return it and `PublicForm` always shows the success
+message instead of redirecting. The Prisma `Form.redirectUrl` column is
+vestigial (the app only reads `settings.redirectUrl`). Not fixed here to keep
+the Phase 11 change set focused; a follow-up should either honor the setting or
+remove it from the builder.
+
+### E2E against `next dev` pays on-demand route compilation
+
+`next dev` compiles a route the first time it is hit. On this machine that cost
+is large enough to blow a tight test budget: server "Ready in 44.7s", and
+`/api/auth/[...nextauth]` 51.7s, `/f/[formKey]` 52.9s, `/dashboard` 28.2s,
+`/leads` 12.8s for their first compile. Because the golden-path spec walks the
+public form → intake → login → dashboard → leads inside a single test, the
+original 60s per-test timeout expired on *compilation*, not on a product
+failure (the owner login had already succeeded before the timeout).
+
+Two consequences, both handled:
+
+- `playwright.config.ts` raises the per-test `timeout` to 180s to absorb cold
+  compiles when the suite targets a dev server. Against a production build
+  (`next build && next start`) the same suite runs in seconds.
+- A cold first login can also return `[auth][error] MissingCSRF`: the client's
+  automatic `/api/auth/csrf` fetch races the auth route's first compile. The
+  login form correctly uses `signIn` from `next-auth/react`, so this is a
+  dev-only cold-start artifact, not an app bug — the same run's later owner
+  login succeeded. Warming routes (or using a prod build) removes it.
+
+Separately, the Neon transaction pooler (`-pooler...neon.tech` with
+`pgbouncer=true`) occasionally drops an idle connection
+(`Error in PostgreSQL connection: Error { kind: Closed, cause: None }`), which
+surfaced once as a transient Prisma `P2028` on the first intake transaction
+after a cold start. The identical transaction succeeds in isolation and on
+every subsequent request; it is the pooler, not the intake code.
+
+### The tick's time-trigger sweep could starve job processing
+
+On a slow database the `runTimeTriggers` sweep (which creates no-activity /
+schedule runs) could consume the tick's entire time budget, so every job the
+tick had just claimed got `reschedule`d and — with no cron running locally —
+never processed. `runTick` now starts the job-processing budget **after** the
+sweep (`jobBudgetStart`), so jobs always get their own slice. This is safe in
+production too: a large workspace whose sweep is slow would otherwise stop
+processing its queue. The fundamental granularity is unchanged — the sweep and
+the queue both still run every tick.
+
