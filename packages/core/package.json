@@ -7,7 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./engine/evaluator": "./src/engine/evaluator.ts"
+    "./engine/evaluator": "./src/engine/evaluator.ts",
+    "./templates": "./src/templates.ts"
   },
   "scripts": {
     "build": "tsc",

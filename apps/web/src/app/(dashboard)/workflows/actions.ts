@@ -2,11 +2,13 @@
 
 import { auth } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { prisma } from '@flowbridge/db'
 import { Prisma } from '@prisma/client'
 import { JobQueue } from '@/lib/queue'
 import { drainNow } from '@/lib/engine'
 import { WorkflowDefinitionSchema } from '@flowbridge/core/schema'
+import { getWorkflowTemplate } from '@flowbridge/core/templates'
 
 /** Toggle a workflow's enabled flag — form-action, server-only. */
 export async function toggleWorkflow(formData: FormData) {
@@ -134,4 +136,35 @@ export async function runWorkflowManually(workflowId: string, leadId: string) {
   drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
   revalidatePath('/runs')
   return { ok: true }
+}
+
+/**
+ * Create a workflow from a built-in template and open it in the editor
+ * (SPEC §13 Week 4 templates gallery). Starts paused, like any new workflow.
+ */
+export async function createWorkflowFromTemplate(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+
+  const templateId = formData.get('templateId')
+  if (typeof templateId !== 'string') return
+
+  const template = getWorkflowTemplate(templateId)
+  if (!template) return
+
+  const definition = WorkflowDefinitionSchema.parse(template.definition)
+
+  const created = await prisma.workflow.create({
+    data: {
+      workspaceId: session.user.workspaceId,
+      name: template.name,
+      description: template.description,
+      enabled: false,
+      version: 1,
+      definition: definition as never,
+    },
+  })
+
+  revalidatePath('/workflows')
+  redirect(`/workflows/${created.id}/edit`)
 }

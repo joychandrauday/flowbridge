@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { GitBranch, Play, Square } from 'lucide-react'
 import { toggleWorkflow } from './actions'
+import { TemplateGallery } from './template-gallery'
 
 export const metadata: Metadata = {
   title: 'Workflows | FlowBridge',
@@ -70,7 +71,7 @@ export default async function WorkflowsPage() {
               <GitBranch className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
             </div>
             <p className="font-medium">No workflows yet</p>
-            <p className="text-sm text-muted-foreground">Start with: Instant lead assignment.</p>
+            <p className="text-sm text-muted-foreground">Start with: Instant lead assignment — or pick a template below.</p>
           </CardContent>
         </Card>
       ) : (
@@ -127,6 +128,8 @@ export default async function WorkflowsPage() {
           ))}
         </div>
       )}
+
+      <TemplateGallery />
     </div>
   )
 }
