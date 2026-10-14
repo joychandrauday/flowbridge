@@ -123,6 +123,26 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `docs/decisions.md` — deviations recorded: `after()` unavailable on Next 14 (drainNow), serialized `pnpm test`, middleware matcher, `scoped()` behaviour, real SMTP, registration/onboarding flow, executor typing, run-step index
 - [x] Update AGENTS.md stale claims (correct `pnpm db:generate`, executor/core split, JobQueue location, `after()` note)
 
+## Phase 10 — Post-audit feature completion (in progress)
+
+Full audit against `SPEC.md` §2/§4/§9/§10 + `AGENTS.md` §5 found one true MVP gap
+and several polish gaps. Tracked here, fixed in small commits.
+
+- [x] **Discord notification** (SPEC §2.5/§4.4): `send_discord` Zod schema +
+      executor (host-locked to `discord.com`, SSRF-safe) + settings integration
+      + workflow-editor step + run-history icon + unit test
+- [x] Dashboard KPI fixes: relabel "Conversion Rate" → "Workflow Success Rate"
+      (SPEC §2.9) and replace hardcoded trend values with real week-over-week counts
+- [x] Loading + error states for dashboard screens (AGENTS §5): `loading.tsx` /
+      `error.tsx`, skeleton components
+- [x] Leads: saved filters (localStorage), quick-assign, bulk actions (SPEC §10.2)
+- [x] ⌘K command palette (SPEC §10 micro-interactions)
+- [x] `/api/health` endpoint (SPEC §13 Week 4)
+- [x] Workflow templates gallery (SPEC §2 stretch / §13 Week 4): 3 templates in
+      `packages/core` validated by test
+- [x] UI shell fixes: removed hardcoded notification badge, fixed dead
+      Profile/Account links → single Settings link
+
 ---
 
 ## Cross-cutting

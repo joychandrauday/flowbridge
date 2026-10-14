@@ -19,20 +19,25 @@ retry and error is visible, and a failed automation is never swallowed.
   - Honeypot + per-IP/per-form rate limiting + payload caps on every public route.
 - **Mini-CRM** — leads list with filters, detail page, status pipeline
   (New → Contacted → Qualified → Won/Lost), notes, and an interleaved activity + run timeline.
+  Saved filters, inline quick-assign, and bulk status/assignee actions.
 - **Workflow builder (form-based, no drag-and-drop canvas)** — Trigger → optional
-  conditions (AND/OR groups) → ordered steps, with a live JSON preview and "Run on lead" test.
+  conditions (AND/OR groups) → ordered steps, with a live JSON preview and "Run on lead" test,
+  plus a three-template gallery to start from.
 - **Steps** — assign (fixed / role / round-robin / rule-based), create task,
   update lead field, delay/wait, send email (Resend | SMTP | log-only),
-  send Telegram, send Slack, HTTP request (outgoing webhook, SSRF-guarded).
+  send Telegram, send Slack, send Discord, HTTP request (outgoing webhook, SSRF-guarded).
 - **Triggers** — `lead.created`, `lead.status_changed`, `lead.no_activity_for(minutes)`,
   `schedule(cron)`, `manual`.
 - **Follow-up automation** — "if a lead is still `New` after a delay → notify + urgent task + escalate".
 - **Tasks** — my tasks, due/overdue, complete.
 - **Run history** — every run with per-step status, redacted inputs/outputs,
   durations, attempts, error, and one-click **retry from the failed step**.
-- **Dashboard** — leads by source, avg first-response time, workflow success rate, overdue tasks.
+- **Dashboard** — leads by source, avg first-response time, workflow success rate,
+  overdue tasks, and real week-over-week KPI trends.
 - **Settings** — workspace name/slug, webhook secret rotation, member roles &
   availability, integration credentials (encrypted), API keys (create/revoke).
+- **⌘K command palette** — jump to any page or create a workflow/form from anywhere.
+- **Health probe** — `GET /api/health` reports process + database status (no secrets).
 - **Seed data + demo workspace** — demoable golden path in under two minutes.
 
 ---
@@ -73,7 +78,7 @@ flowchart LR
   TICK -->|"FOR UPDATE SKIP LOCKED"| JOBS
   TICK --> ENG
   ENG --> RUNS
-  ENG --> NOTIF["Email · Telegram · Slack · HTTP"]
+  ENG --> NOTIF["Email · Telegram · Slack · Discord · HTTP"]
 ```
 
 ### The queue lives in Postgres
@@ -244,7 +249,7 @@ pnpm --filter @flowbridge/core test:coverage # coverage gate (≥70%)
 3. Run `pnpm db:generate && pnpm db:push` (or `db:migrate:prod`) and `pnpm db:seed`
    against the production database.
 4. Create the once-a-minute cron job (above) pointing at the deployed tick URL.
-5. Optional: connect real integrations (Resend/SMTP, Telegram, Slack) in Settings.
+5. Optional: connect real integrations (Resend/SMTP, Telegram, Slack, Discord) in Settings.
 
 ---
 

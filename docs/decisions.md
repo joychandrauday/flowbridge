@@ -240,6 +240,18 @@ compares constant-time, rejects expired keys, bumps `lastUsedAt`, and requires t
 `read:leads` scope. The key's `workspaceId` — never a client value — scopes the
 query. Other endpoints remain session-only for now.
 
+### Discord is a first-class notification channel, host-locked
+
+SPEC §2.5/§4.4 list Discord alongside Telegram and Slack, so `send_discord` was
+added as a proper step type (Zod config → executor → settings integration →
+workflow-editor step → run-history icon → unit test), not left out. The
+integration stores a `webhookUrl` in its encrypted config. Because that URL is
+user-supplied, it is a potential SSRF vector, so the **host is allow-listed**
+(`discord.com` / `discordapp.com`, HTTPS only) both when saving the integration
+and again in the executor before the request fires — a stored URL can never be
+pointed at an internal address. Discord `content` is capped at 2000 chars and
+truncated client-side. Success is `204 No Content`.
+
 ### A failed run is never silent
 
 `markRunFailed` is the single choke point for the `FAILED` transition, so the
@@ -258,3 +270,51 @@ column did not exist, so role/assignee targeting always fell through to the
 integration default. Added `User.telegramChatId String?` (nullable, additive) and
 the executor now reads the typed field. Fallback order is explicit `chatId` →
 role/assignee lookup → integration `defaultChatId`.
+
+---
+
+## Post-audit feature completion
+
+### Leads bulk actions are per-lead transactions, agents can't reassign
+
+SPEC §10.2 asks for saved filters, quick-assign, and bulk actions on the Leads
+table. Bulk status/assignee changes run as **one transaction per lead** (same
+pattern as CSV import) rather than one giant transaction — a single bad row
+can't roll back the whole selection. A `lead.status_changed` bulk change fires
+the same `createRunsForLeadStatusChange` helper as the single-lead action, so
+workflow triggers behave identically. Per SPEC §3, **agents may only change the
+status of their own leads and can never reassign** (the assignee control is
+hidden, and the action re-checks the role and re-scopes the `where` clause).
+Selections are capped at 100 ids per submit.
+
+### Saved lead filters live in `localStorage`, not the database
+
+SPEC §8's data model has no `SavedFilter` table, and adding one would be a
+schema change outside the spec. Saved filters are therefore stored per browser
+in `localStorage` under `flowbridge:savedLeadFilters` — a deliberate, documented
+compromise. If per-user/per-workspace saved filters are wanted later, promote
+this to a real model.
+
+### Command palette is hand-rolled (no `cmdk` dependency)
+
+The ⌘K/Ctrl-K palette (SPEC §10 micro-interactions) is built on the existing
+Radix `Dialog` plus a filtered command list. Adding `cmdk` for one dialog wasn't
+worth the dependency; the hand-rolled version keeps ⌘K registration, keyboard
+navigation, and listing in ~40 lines and stays inside the design system.
+
+### `/api/health` is public and secret-free
+
+SPEC §13 Week 4 asks for a health endpoint. `GET /api/health` runs `SELECT 1`
+and returns `{ status, db, latencyMs, timestamp }` with `200`, or a bare
+`503 { status: 'error', db: 'down' }`. It never echoes env values. The
+middleware matcher already excludes `/api`, so no auth is required to probe it.
+
+### Workflow templates live in `packages/core`, validated by a test
+
+The three-template gallery (SPEC §2 stretch / §13 Week 4) is pure data in
+`packages/core/src/templates.ts`. `templates.test.ts` runs every definition
+through `WorkflowDefinitionSchema`, so a renamed step field fails CI instead of
+failing for the user the moment they click "Use template". The create action
+re-validates server-side before writing. Seeded demo workflows are left
+untouched — the gallery only affects new workspaces.
+
