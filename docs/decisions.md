@@ -553,3 +553,24 @@ Before using this for anything other than a demo: leave `DEMO_LOGIN` unset
 
 
 
+
+## UI Redesign (logo-derived control room + smooth flow)
+
+### Brand palette derived from public/icon.png
+The source logo is a white field carrying deep navy (#121F35) and azure (#2B7EDE). We decoded the palette and normalized to HSL tokens. Primary (interactive) is azure-600 (hsl(213 71% 42%)) for WCAG AA on white text; literal azure is reserved as `--brand` for non-text graphics. Sidebar/navy rail uses deep navy. Red is reserved strictly for machine failure (FAILED runs). Typefaces: Archivo (UI/headings) + IBM Plex Mono (telemetry). Motion: single curve + 140/220/420ms durations with orchestrated stagger; `prefers-reduced-motion` disables transforms/animations.
+
+### Engine heartbeat
+The ~1-minute tick (Postgres job queue + `/api/internal/tick`, cron-job.org every minute) is surfaced in the topbar via an engine heartbeat (running/queued/failed24h + last activity). When `failed24h > 0` it becomes loud and links to `/runs?status=FAILED`. Heartbeat is computed from `WorkflowRun` scoped to workspace; server layout passes serialisable data to client shell.
+
+### Logo treatment
+Mark is a wide azure double-ribbon (aspect ~1.49:1). On navy rail we use `logo-tile.png` (square tile from source) in a white chip; wide `logo.png` used on light surfaces. Assets generated via a small PNG decoder/encoder (no sharp dep).
+
+### Shell architecture
+Dashboard layout is a server component (fetches session + heartbeat), passing data to `AppShell` (client) which owns UI state (nav open, localStorage, signOut). Avoids extra API call + polling.
+
+### Status system
+`StatusLamp` (dot + label) with tone mapping for leads/runs/tasks; lamps not pills everywhere. Red only for `danger` (FAILED).
+
+### Page header + empty states
+`PageHeader` (title/description/actions/meta) and `EmptyState` (action + template suggestions) standardised.
+

@@ -222,7 +222,7 @@ model Integration { id String @id @default(cuid()); workspaceId String; type Str
 
 ## 10. UX & design
 
-**Visual direction:** calm, "operations cockpit" — neutral zinc background, one vivid accent (indigo or emerald), generous spacing, subtle borders, soft shadows, dark mode first-class. Inter or Geist font.
+**Visual direction:** calm, "operations cockpit" — cool canvas with a navy control rail, one vivid accent derived from the brand mark (logo azure), generous spacing, subtle borders, soft shadows, dark mode first-class. Archivo (UI/headings) + IBM Plex Mono (machine telemetry) typefaces. The engine runs on a ~1-minute tick (documented trade-off), surfaced via a live engine heartbeat in the topbar. Red is reserved strictly for machine failure; business outcomes use muted states.
 
 Screens:
 1. **Dashboard** — 4 KPI cards, leads-by-source donut, response-time line, live "recent runs" feed.
