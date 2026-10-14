@@ -34,8 +34,16 @@ export function KPICard({ title, value, icon: IconName, variant = 'default', tre
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
             <p className="text-3xl font-bold tracking-tight">{value}</p>
             {trend && (
-              <div className="flex items-center gap-1 text-sm text-green-600 dark:text-green-400">
-                <span className="font-medium">+{trend.value}%</span>
+              <div
+                className={cn(
+                  'flex items-center gap-1 text-sm',
+                  trend.value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'
+                )}
+              >
+                <span className="font-medium">
+                  {trend.value >= 0 ? '+' : ''}
+                  {trend.value}%
+                </span>
                 <span className="text-muted-foreground">{trend.label}</span>
               </div>
             )}

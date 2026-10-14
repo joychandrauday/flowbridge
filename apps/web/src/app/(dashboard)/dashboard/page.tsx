@@ -7,11 +7,23 @@ import { LeadsBySourceChart } from '@/components/charts/leads-by-source'
 import { ResponseTimeChart } from '@/components/charts/response-time'
 import { RecentRuns } from '@/components/dashboard/recent-runs'
 
+/** Percent change from `previous` to `current`; null when there is no baseline. */
+function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return null
+  return Math.round(((current - previous) / previous) * 100)
+}
+
 export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user?.workspaceId) redirect('/onboarding')
 
   const workspaceId = session.user.workspaceId
+
+  const now = new Date()
+  const weekAgo = new Date(now)
+  weekAgo.setDate(now.getDate() - 7)
+  const twoWeeksAgo = new Date(now)
+  twoWeeksAgo.setDate(now.getDate() - 14)
 
   // Fetch dashboard stats
   const [
@@ -23,18 +35,36 @@ export default async function DashboardPage() {
     overdueTasks,
     totalRuns,
     successfulRuns,
+    leadsThisWeek,
+    leadsLastWeek,
+    runsThisWeek,
+    successfulRunsThisWeek,
+    runsLastWeek,
+    successfulRunsLastWeek,
   ] = await Promise.all([
     prisma.lead.count({ where: { workspaceId } }),
     prisma.lead.count({ where: { workspaceId, status: 'NEW' } }),
     prisma.lead.count({ where: { workspaceId, status: 'CONTACTED' } }),
     prisma.lead.count({ where: { workspaceId, status: 'QUALIFIED' } }),
     prisma.lead.count({ where: { workspaceId, status: 'WON' } }),
-    prisma.task.count({ where: { workspaceId, status: 'OPEN', dueAt: { lt: new Date() } } }),
+    prisma.task.count({ where: { workspaceId, status: 'OPEN', dueAt: { lt: now } } }),
     prisma.workflowRun.count({ where: { workflow: { workspaceId } } }),
     prisma.workflowRun.count({ where: { workflow: { workspaceId }, status: 'SUCCEEDED' } }),
+    // Week-over-week inputs (real trends, never hardcoded)
+    prisma.lead.count({ where: { workspaceId, createdAt: { gte: weekAgo } } }),
+    prisma.lead.count({ where: { workspaceId, createdAt: { gte: twoWeeksAgo, lt: weekAgo } } }),
+    prisma.workflowRun.count({ where: { workflow: { workspaceId }, createdAt: { gte: weekAgo } } }),
+    prisma.workflowRun.count({ where: { workflow: { workspaceId }, status: 'SUCCEEDED', createdAt: { gte: weekAgo } } }),
+    prisma.workflowRun.count({ where: { workflow: { workspaceId }, createdAt: { gte: twoWeeksAgo, lt: weekAgo } } }),
+    prisma.workflowRun.count({ where: { workflow: { workspaceId }, status: 'SUCCEEDED', createdAt: { gte: twoWeeksAgo, lt: weekAgo } } }),
   ])
 
   const successRate = totalRuns > 0 ? Math.round((successfulRuns / totalRuns) * 100) : 0
+  const successRateThisWeek = runsThisWeek > 0 ? Math.round((successfulRunsThisWeek / runsThisWeek) * 100) : 0
+  const successRateLastWeek = runsLastWeek > 0 ? Math.round((successfulRunsLastWeek / runsLastWeek) * 100) : 0
+  // Real week-over-week movement; `null` means "not enough history" (no trend shown).
+  const leadsTrend = percentChange(leadsThisWeek, leadsLastWeek)
+  const successTrend = percentChange(successRateThisWeek, successRateLastWeek)
 
   // Leads grouped by source for the pie chart
   const sourceGroups = await prisma.lead.groupBy({
@@ -114,7 +144,7 @@ export default async function DashboardPage() {
           title="Total Leads"
           value={totalLeads}
           icon="Users"
-          trend={{ value: 12, label: 'vs last week' }}
+          trend={leadsTrend !== null ? { value: leadsTrend, label: 'vs last week' } : undefined}
         />
         <KPICard
           title="New Leads"
@@ -123,10 +153,10 @@ export default async function DashboardPage() {
           variant="primary"
         />
         <KPICard
-          title="Conversion Rate"
+          title="Workflow Success Rate"
           value={`${successRate}%`}
           icon="TrendingUp"
-          trend={{ value: 5, label: 'vs last week' }}
+          trend={successTrend !== null ? { value: successTrend, label: 'vs last week' } : undefined}
         />
         <KPICard
           title="Overdue Tasks"
