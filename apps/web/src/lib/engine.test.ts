@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { computeRetryAfter, tickDefaults } from './engine'
+import { computeRetryAfter, tickDefaults, isRunResumable } from './engine'
 
 describe('computeRetryAfter', () => {
   afterEach(() => {
@@ -41,5 +41,24 @@ describe('computeRetryAfter', () => {
     expect(defaults.timeBudgetMs).toBe(25000)
     expect(defaults.maxJobs).toBe(10)
     expect(defaults.lockTimeoutMs).toBe(30000)
+  })
+})
+
+describe('isRunResumable', () => {
+  it('resumes QUEUED and WAITING runs (fresh and parked/retrying)', () => {
+    expect(isRunResumable('QUEUED')).toBe(true)
+    expect(isRunResumable('WAITING')).toBe(true)
+  })
+
+  it('resumes a RUNNING run so a crashed worker cannot strand it', () => {
+    // Regression: a run left RUNNING by a killed invocation (timeout/deploy)
+    // was previously ignored, so the reclaimed job no-op'd and was marked
+    // COMPLETED — the run never finished and no error was ever surfaced.
+    expect(isRunResumable('RUNNING')).toBe(true)
+  })
+
+  it('never re-runs a terminal run', () => {
+    expect(isRunResumable('SUCCEEDED')).toBe(false)
+    expect(isRunResumable('FAILED')).toBe(false)
   })
 })

@@ -467,3 +467,37 @@ responds, so the in-process drain may not finish. This is by design — the cron
 tick is the durable path — and means production first-step latency is up to
 ~1 minute. Documented in the README trade-offs.
 
+### A run left `RUNNING` by a dead worker is now resumed, not stranded
+
+Found while smoke-testing the first real deployment. `executeRun` only accepted
+runs in `QUEUED`/`WAITING`, treating `RUNNING` as "someone else has it". But a
+run is set `RUNNING` *before* the steps execute, so when an invocation dies
+mid-run (a serverless timeout, a deploy, an OOM) the run stays `RUNNING` while
+its job lock expires. The next tick reclaims the job, calls `executeRun`, which
+returns immediately — and the caller then marks the job `COMPLETED`. The run is
+stranded forever: no error, no retry, nothing surfaced. That is precisely the
+silent failure the product promises to eliminate.
+
+**Fix:** `isRunResumable` now also accepts `RUNNING`, so the reclaimed job
+resumes from the first non-`SUCCEEDED` step (the run is already idempotent —
+it skips `SUCCEEDED` steps and re-attempts a step left `RUNNING`, which is the
+same at-least-once behaviour as the retry path). A genuinely in-flight run is
+still safe: its job is `CLAIMED` under a live lock, so `claim()` cannot hand it
+out twice. Guarded by a unit test. (The run that surfaced this — created during
+the cold-start window below — was repaired by re-enqueueing a `workflow_run`
+job for it.)
+
+### A region mismatch, not the engine, made the first tick time out
+
+The first production tick returned `FUNCTION_INVOCATION_TIMEOUT`. Cause: the
+Vercel project defaulted to `iad1` (US East) while the Neon database is in
+`ap-southeast-1` (Singapore), giving ~1.1 s per query round-trip. A run makes
+dozens of queries, so a single run took ~27 s and a tick blew past the
+function limit. Setting the project's `serverlessFunctionRegion` to `sin1`
+dropped the same health-check round-trip from ~1100 ms to ~6 ms and the tick
+from a timeout to **772 ms for 5 jobs**. Lesson: pin the function region to the
+database region. `nodeVersion` was also pinned to `22.x` (matching local) since
+Vercel now defaults new projects to Node 24, which the pinned Next 14.0.4 was
+never validated against.
+
+

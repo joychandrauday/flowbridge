@@ -242,13 +242,34 @@ export async function createRunsForLeadStatusChange(
 }
 
 /**
+ * Statuses `executeRun` may pick up.
+ *
+ * `RUNNING` is included deliberately: if a worker dies mid-run (a serverless
+ * timeout, a deploy, a killed container) the run is left `RUNNING` while its
+ * job lock eventually expires and is reclaimed. Without this the reclaimed job
+ * would no-op — `executeRun` would return early and the caller would mark the
+ * job `COMPLETED` — stranding the run forever with no error and no retry, which
+ * is exactly the silent failure FlowBridge exists to eliminate. Resuming is
+ * safe because `executeRun` skips steps already marked `SUCCEEDED`; a step left
+ * `RUNNING` is re-attempted (at-least-once, same as the retry path).
+ *
+ * A genuinely-in-flight run cannot be picked up here: its job is `CLAIMED`
+ * under a live lock, so `claim()` never hands it out concurrently.
+ */
+const RESUMABLE_RUN_STATUSES = new Set(['QUEUED', 'WAITING', 'RUNNING'])
+
+export function isRunResumable(status: string): boolean {
+  return RESUMABLE_RUN_STATUSES.has(status)
+}
+
+/**
  * Processes one workflow run from the top, skipping SUCCEEDED steps.
  * Safe to call repeatedly: it is the resume path for delays and retries.
  */
 export async function executeRun(prisma: PrismaClient, queue: JobQueue, workflowRunId: string): Promise<void> {
   const run = await loadRun(prisma, workflowRunId)
   if (!run) return
-  if (run.status !== 'QUEUED' && run.status !== 'WAITING') return // already claimed/finished
+  if (!isRunResumable(run.status)) return // terminal — already succeeded/failed
 
   const definition = getDefinition(run)
   const parsed = WorkflowDefinitionSchema.safeParse(definition)
