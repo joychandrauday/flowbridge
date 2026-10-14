@@ -109,12 +109,20 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
           <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
           <p className="text-muted-foreground">Everyone captured by your forms, webhooks, and imports</p>
         </div>
-        <Link href="/leads/import">
-          <Button variant="outline">
-            <Plus className="mr-2 h-4 w-4" />
-            Import CSV
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link href="/leads/import">
+              <Plus className="mr-2 h-4 w-4" />
+              Import CSV
+            </Link>
           </Button>
-        </Link>
+          <Button asChild>
+            <Link href="/leads/new">
+              <Plus className="mr-2 h-4 w-4" />
+              New lead
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

@@ -1,6 +1,8 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
 import { Role } from '@prisma/client'
+import { nextRoundRobinMember } from '../round-robin'
+import { touchLeadActivity } from '../lead-lifecycle'
 
 export const createTaskExecutor: StepExecutor = {
   type: 'create_task',
@@ -11,7 +13,7 @@ export const createTaskExecutor: StepExecutor = {
       description?: string
       dueInMinutes?: number
       dueAt?: string
-      assigneeStrategy?: string
+      assigneeStrategy?: 'lead_assignee' | 'round_robin' | 'least_open_leads' | 'fixed' | 'role'
       assigneeId?: string
       role?: string
     }
@@ -43,26 +45,21 @@ export const createTaskExecutor: StepExecutor = {
       const members = await prisma.member.findMany({
         where: { workspaceId: lead.workspaceId, available: true },
         orderBy: { createdAt: 'asc' },
+        select: { id: true },
       })
-      if (members.length > 0) {
-        const runCount = await prisma.workflowRun.count({
-          where: { workflowId: workflowRun.workflowId, leadId: lead.id },
-        })
-        targetAssigneeId = members[runCount % members.length].id
-      }
+      targetAssigneeId = (await nextRoundRobinMember(prisma, workflowRun.workflowId, members))?.id
     }
 
     if (!targetAssigneeId && assigneeStrategy === 'least_open_leads') {
-      const membersWithCounts = await prisma.member.findMany({
+      const members = await prisma.member.findMany({
         where: { workspaceId: lead.workspaceId, available: true },
-        include: {
-          _count: {
-            select: { assignedLeads: { where: { status: { in: ['NEW', 'CONTACTED'] } } } },
-          },
+        select: {
+          id: true,
+          _count: { select: { assignedLeads: { where: { status: { in: ['NEW', 'CONTACTED'] } } } } },
         },
-        orderBy: { assignedLeads: { _count: 'asc' } },
       })
-      targetAssigneeId = membersWithCounts[0]?.id ?? undefined
+      members.sort((a, b) => a._count.assignedLeads - b._count.assignedLeads)
+      targetAssigneeId = members[0]?.id
     }
 
     if (!targetAssigneeId && assigneeStrategy === 'role') {
@@ -93,6 +90,20 @@ export const createTaskExecutor: StepExecutor = {
       },
     })
 
-    return { success: true, output: { taskId: task.id } }
+    // A created task is activity on the lead (SPEC §2.3 timeline) and must reset
+    // the inactivity clock, or `no_activity_for` would ignore work the
+    // automation just produced.
+    await prisma.activity.create({
+      data: {
+        workspaceId: lead.workspaceId,
+        leadId: lead.id,
+        type: 'task_created',
+        body: `Task created: ${renderedTitle}`,
+        meta: { taskId: task.id, assigneeId: targetAssigneeId ?? null, runId: workflowRun.id },
+      },
+    })
+    await touchLeadActivity(prisma, lead.id)
+
+    return { success: true, output: { taskId: task.id, assigneeId: targetAssigneeId ?? null } }
   },
 }

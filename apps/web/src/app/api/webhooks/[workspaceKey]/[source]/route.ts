@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@flowbridge/db'
-import { Prisma } from '@prisma/client'
 import { z } from 'zod'
 import { verifySignature } from '@flowbridge/core'
 import { JobQueue } from '@/lib/queue'
-import { createRunsForLeadEvent, drainNow } from '@/lib/engine'
+import { recordIntake } from '@/lib/intake'
+import { drainNow } from '@/lib/engine'
 import { createRateLimiter } from '@/lib/rate-limit'
 
 /**
@@ -110,51 +110,27 @@ export async function POST(
   const queue = new JobQueue(prisma, `worker-webhook-${Date.now()}`)
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
-      const intakeEvent = await tx.intakeEvent.create({
-        data: {
-          workspaceId: workspace.id,
-          source: leadSource,
-          payload: payload as Prisma.InputJsonValue,
-          ip,
-          userAgent,
-        },
-      })
-
-      const lead = await tx.lead.create({
-        data: {
-          workspaceId: workspace.id,
-          name,
-          email,
-          phone,
-          source: leadSource,
-          status: 'NEW',
-          data: payload as Prisma.InputJsonValue,
-        },
-      })
-
-      await tx.intakeEvent.update({
-        where: { id: intakeEvent.id },
-        data: { leadId: lead.id },
-      })
-
-      const runIds = await createRunsForLeadEvent(tx, queue, {
+    const result = await prisma.$transaction((tx) =>
+      recordIntake(tx, queue, {
         workspaceId: workspace.id,
-        leadId: lead.id,
-        eventId: intakeEvent.id,
+        source: leadSource,
+        name,
+        email,
+        phone,
+        data: payload,
+        payload,
+        ip,
+        userAgent,
       })
-
-      return { lead, runIds }
-    })
+    )
 
     drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
 
-    return NextResponse.json({ success: true, leadId: result.lead.id }, { status: 202 })
+    return NextResponse.json(
+      { success: true, leadId: result.leadId, duplicate: !result.created },
+      { status: 202 }
+    )
   } catch (error) {
-    // Unique email collision → treat as a deduplicated event, not a failure.
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      return NextResponse.json({ success: true, duplicate: true }, { status: 200 })
-    }
     console.error('Webhook intake error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

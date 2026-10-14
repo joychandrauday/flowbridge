@@ -8,8 +8,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { CheckCircle2, ListTodo } from 'lucide-react'
-import { completeTask } from './actions'
+import { CheckCircle2, ListTodo, RotateCcw } from 'lucide-react'
+import { completeTask, reopenTask } from './actions'
 
 export const metadata: Metadata = {
   title: 'Tasks | FlowBridge',
@@ -21,6 +21,7 @@ interface SearchParams {
   page?: string
   status?: string
   assigneeId?: string
+  overdue?: string
 }
 
 function formatDate(date: Date | null): string {
@@ -36,6 +37,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const page = Math.min(Math.max(1, parseInt(searchParams.page ?? '1', 10) || 1), 100000)
   const status = searchParams.status === 'DONE' || searchParams.status === 'OPEN' ? searchParams.status : 'OPEN'
   const assigneeId = searchParams.assigneeId || undefined
+  const overdueOnly = searchParams.overdue === '1'
 
   // SPEC §3: agents only see tasks assigned to them. Owners/admins see all.
   const isAgent = session.user.role === 'AGENT'
@@ -49,6 +51,8 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const where: Prisma.TaskWhereInput = { workspaceId, status }
   if (isAgent) where.assigneeId = viewer?.id ?? '__no_member__'
   else if (assigneeId) where.assigneeId = assigneeId
+  // "Overdue" only makes sense for open tasks with a due date in the past.
+  if (overdueOnly && status === 'OPEN') where.dueAt = { lt: new Date() }
 
   const [total, tasks, assignees] = await Promise.all([
     prisma.task.count({ where }),
@@ -74,6 +78,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
     const url = new URLSearchParams()
     url.set('status', status)
     if (assigneeId) url.set('assigneeId', assigneeId)
+    if (overdueOnly) url.set('overdue', '1')
     for (const [key, value] of Object.entries(overrides)) {
       if (value) url.set(key, value)
       else url.delete(key)
@@ -123,6 +128,17 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
                 <option key={member.id} value={member.id}>{member.user.name ?? 'Unnamed'}</option>
               ))}
             </select>
+            <label className="inline-flex h-10 items-center gap-2 rounded-md border bg-background px-3 text-sm">
+              <input
+                type="checkbox"
+                name="overdue"
+                value="1"
+                defaultChecked={overdueOnly}
+                disabled={status !== 'OPEN'}
+                className="h-4 w-4"
+              />
+              Overdue only
+            </label>
             <input type="hidden" name="page" value="1" />
             <Button type="submit" size="sm" variant="secondary">Apply</Button>
           </form>
@@ -188,9 +204,18 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
                             </Button>
                           </form>
                         ) : (
-                          <span className="text-sm text-muted-foreground">
-                            {task.completedAt ? formatDate(task.completedAt) : 'Done'}
-                          </span>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {task.completedAt ? formatDate(task.completedAt) : 'Done'}
+                            </span>
+                            <form action={reopenTask}>
+                              <input type="hidden" name="taskId" value={task.id} />
+                              <Button type="submit" size="sm" variant="ghost">
+                                <RotateCcw className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                                Reopen
+                              </Button>
+                            </form>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>

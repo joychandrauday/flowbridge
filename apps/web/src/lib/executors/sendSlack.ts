@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { touchLeadActivity } from '../lead-lifecycle'
 
 export const sendSlackExecutor: StepExecutor = {
   type: 'send_slack',
@@ -79,6 +80,7 @@ export const sendSlackExecutor: StepExecutor = {
             meta: { channel: targetChannel, ts: data.ts },
           },
         })
+        await touchLeadActivity(prisma, lead.id)
       }
 
       return { success: true, output: { ts: data.ts, channel: targetChannel } }

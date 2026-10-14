@@ -1,11 +1,21 @@
-import { Condition, ConditionGroup, TEMPLATE_ALLOWLIST, TemplateVariable } from '../schema/workflow'
+import {
+  Condition,
+  ConditionGroup,
+  ConditionNode,
+  TEMPLATE_ALLOWLIST,
+  TemplateVariable,
+  normalizeConditionField,
+} from '../schema/workflow'
 
 // ============================================
 // Condition Evaluator
 // ============================================
 
 export function evaluateCondition(condition: Condition, context: Record<string, unknown>): boolean {
-  const fieldValue = getNestedValue(context, condition.field)
+  // Defensive normalization: some callers (assign `rule_based`, live previews)
+  // pass condition objects that never went through `WorkflowDefinitionSchema`,
+  // where a bare `status` would silently resolve to `undefined`.
+  const fieldValue = getNestedValue(context, normalizeConditionField(condition.field))
   const conditionValue = condition.value
 
   switch (condition.operator) {
@@ -62,9 +72,12 @@ export function evaluateConditionGroup(group: ConditionGroup, context: Record<st
   }
 }
 
-export function evaluateConditions(conditions: ConditionGroup[], context: Record<string, unknown>): boolean {
+export function evaluateConditions(conditions: ConditionNode[], context: Record<string, unknown>): boolean {
   if (conditions.length === 0) return true
-  return conditions.every((group) => evaluateConditionGroup(group, context))
+  // Entries may be a single comparison or an AND/OR group (see ConditionNodeSchema).
+  return conditions.every((node) =>
+    'conditions' in node ? evaluateConditionGroup(node, context) : evaluateCondition(node, context)
+  )
 }
 
 function getNestedValue(obj: Record<string, unknown>, path: string): unknown {

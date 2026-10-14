@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Archivo, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
+import { Analytics } from '@vercel/analytics/next'
 import { Providers } from './providers'
 
 /**
@@ -63,6 +64,7 @@ export default function RootLayout({
       </head>
       <body className={`${archivo.variable} ${plexMono.variable} font-sans antialiased`}>
         <Providers>{children}</Providers>
+        <Analytics />
       </body>
     </html>
   )

@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { touchLeadActivity } from '../lead-lifecycle'
 
 /** Only real Discord webhook hosts are allowed, so a stored URL can never be
  * pointed at an internal address (SSRF — AGENTS §3). */
@@ -90,6 +91,7 @@ export const sendDiscordExecutor: StepExecutor = {
             meta: { integrationName: integration.name },
           },
         })
+        await touchLeadActivity(prisma, lead.id)
       }
 
       return { success: true, output: { sent: true } }

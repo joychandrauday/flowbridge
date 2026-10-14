@@ -2,12 +2,151 @@
 
 import { auth } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { prisma } from '@flowbridge/db'
 import { LeadStatus, Prisma } from '@prisma/client'
 import { JobQueue } from '@/lib/queue'
 import { createRunsForLeadStatusChange, drainNow } from '@/lib/engine'
+import { deriveFirstContactedAt } from '@/lib/lead-lifecycle'
+import { recordIntake, normalizeEmail } from '@/lib/intake'
 
 const LEAD_STATUSES: LeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'WON', 'LOST']
+
+/**
+ * Create a lead by hand (mini-CRM, SPEC §4.1/§9). Runs through the same intake
+ * pipeline as forms/webhooks, so a manual lead still records an IntakeEvent,
+ * still fires `lead.created` workflows, and still dedupes against an existing
+ * lead with the same email. Agents get the lead assigned to themselves so it is
+ * visible to them (SPEC §3).
+ */
+export async function createLead(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+  const workspaceId = session.user.workspaceId
+
+  const name = String(formData.get('name') ?? '').trim()
+  const email = normalizeEmail(String(formData.get('email') ?? ''))
+  const phone = String(formData.get('phone') ?? '').trim()
+  const source = String(formData.get('source') ?? '').trim() || 'manual'
+  const company = String(formData.get('company') ?? '').trim()
+  if (!name) return
+
+  const actor = await prisma.member.findFirst({
+    where: { userId: session.user.id, workspaceId },
+    select: { id: true },
+  })
+  const assignToSelf = session.user.role === 'AGENT' ? (actor?.id ?? null) : null
+
+  const queue = new JobQueue(prisma, `worker-manual-${Date.now()}`)
+  const result = await prisma.$transaction((tx) =>
+    recordIntake(tx, queue, {
+      workspaceId,
+      source,
+      name,
+      email,
+      phone: phone || null,
+      data: company ? { company } : {},
+      payload: { name, email, phone, source, company, createdVia: 'manual' },
+    })
+  )
+
+  if (assignToSelf && result.created) {
+    await prisma.lead.update({ where: { id: result.leadId }, data: { assigneeId: assignToSelf } })
+  }
+
+  drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
+  revalidatePath('/leads')
+  revalidatePath('/dashboard')
+  redirect(`/leads/${result.leadId}`)
+}
+
+/**
+ * Edit a lead's core fields (name/email/phone/source/company). Scoped to the
+ * workspace and, for agents, to their own leads. Every edit is recorded on the
+ * timeline so the change is auditable and resets the inactivity clock.
+ */
+export async function updateLeadDetails(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+  const workspaceId = session.user.workspaceId
+
+  const leadId = String(formData.get('leadId') ?? '')
+  if (!leadId) return
+
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
+  if (!lead) return
+
+  const actor = await prisma.member.findFirst({
+    where: { userId: session.user.id, workspaceId },
+    select: { id: true },
+  })
+  if (session.user.role === 'AGENT' && (!actor || lead.assigneeId !== actor.id)) return
+
+  const name = String(formData.get('name') ?? '').trim() || lead.name
+  const email = normalizeEmail(String(formData.get('email') ?? ''))
+  const phone = String(formData.get('phone') ?? '').trim() || null
+  const source = String(formData.get('source') ?? '').trim() || lead.source
+  const company = String(formData.get('company') ?? '').trim()
+
+  const currentData = (lead.data as Record<string, unknown>) || {}
+  const nextData = { ...currentData }
+  if (company) nextData.company = company
+  else delete nextData.company
+
+  const changed: string[] = []
+  if (name !== lead.name) changed.push('name')
+  if (email !== lead.email) changed.push('email')
+  if (phone !== lead.phone) changed.push('phone')
+  if (source !== lead.source) changed.push('source')
+
+  await prisma.$transaction([
+    prisma.lead.update({
+      where: { id: lead.id },
+      data: {
+        name,
+        email,
+        phone,
+        source,
+        data: nextData as Prisma.InputJsonValue,
+        lastActivityAt: new Date(),
+      },
+    }),
+    prisma.activity.create({
+      data: {
+        workspaceId,
+        leadId: lead.id,
+        type: 'field_update',
+        body: changed.length ? `Details updated: ${changed.join(', ')}` : 'Lead details saved',
+        actorId: actor?.id ?? null,
+      },
+    }),
+  ])
+
+  revalidatePath(`/leads/${lead.id}`)
+  revalidatePath('/leads')
+}
+
+/** Permanently remove a lead (Owner/Admin only). */
+export async function deleteLead(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+  if (session.user.role !== 'OWNER' && session.user.role !== 'ADMIN') return
+
+  const leadId = String(formData.get('leadId') ?? '')
+  if (!leadId) return
+
+  const lead = await prisma.lead.findFirst({
+    where: { id: leadId, workspaceId: session.user.workspaceId },
+    select: { id: true },
+  })
+  if (!lead) return
+
+  await prisma.lead.delete({ where: { id: lead.id } })
+
+  revalidatePath('/leads')
+  revalidatePath('/dashboard')
+  redirect('/leads')
+}
 
 /**
  * Update a lead's status (form-action server action; runs on the server only,
@@ -40,7 +179,7 @@ export async function updateLeadStatus(formData: FormData) {
       data: {
         status: status as LeadStatus,
         // First contact is implicit once someone works the lead
-        firstContactedAt: lead.firstContactedAt ?? (status === 'NEW' ? null : new Date()),
+        firstContactedAt: deriveFirstContactedAt(lead.firstContactedAt, status),
         lastActivityAt: new Date(),
       },
     })
@@ -220,7 +359,7 @@ export async function bulkUpdateLeads(formData: FormData) {
       const data: Prisma.LeadUncheckedUpdateInput = { lastActivityAt: new Date() }
       if (statusChanged) {
         data.status = nextStatus
-        data.firstContactedAt = lead.firstContactedAt ?? (nextStatus === 'NEW' ? null : new Date())
+        data.firstContactedAt = deriveFirstContactedAt(lead.firstContactedAt, nextStatus)
       }
       if (assigneeChanged) data.assigneeId = assigneeId
 

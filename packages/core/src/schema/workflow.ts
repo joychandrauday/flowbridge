@@ -22,8 +22,47 @@ export const OperatorSchema = z.enum([
   'regex_match',
 ])
 
+/**
+ * Bare lead columns accepted by the condition builder. The evaluator resolves
+ * paths against a `{ lead, assignee, workspace, … }` context, so a field that
+ * the UI stored as `status` (instead of `lead.status`) would resolve to
+ * `undefined` and silently disable the condition. Normalizing here — at parse
+ * time — repairs both newly-authored and already-stored definitions.
+ */
+const BARE_LEAD_FIELDS = new Set([
+  'id',
+  'name',
+  'email',
+  'phone',
+  'source',
+  'status',
+  'data',
+  'assigneeId',
+  'firstContactedAt',
+  'lastActivityAt',
+  'createdAt',
+  'updatedAt',
+])
+
+/**
+ * Normalize a condition field to a context path. `status` → `lead.status`,
+ * `company` → `lead.company`, while `lead.status`, `workspace.name`, `now`
+ * and `trigger.type` are left untouched.
+ */
+export function normalizeConditionField(field: string): string {
+  const trimmed = field.trim()
+  if (!trimmed) return field
+  // Already namespaced or a system variable — leave as authored.
+  if (/^(lead|assignee|workspace|trigger)\./.test(trimmed)) return trimmed
+  if (trimmed === 'now' || trimmed === 'uuid') return trimmed
+  // Bare lead column, a custom field (`company`), or a `data.*` path.
+  if (BARE_LEAD_FIELDS.has(trimmed) || trimmed.startsWith('data.')) return `lead.${trimmed}`
+  if (!trimmed.includes('.')) return `lead.${trimmed}`
+  return trimmed
+}
+
 export const ConditionSchema = z.object({
-  field: z.string().min(1),
+  field: z.string().min(1).transform((field) => normalizeConditionField(field)),
   operator: OperatorSchema,
   value: z.unknown().optional(), // Optional for is_empty/is_not_empty
 })
@@ -38,6 +77,15 @@ export const ConditionGroupSchema = z.object({
 
 export type Condition = z.infer<typeof ConditionSchema>
 export type ConditionGroup = z.infer<typeof ConditionGroupSchema>
+
+/**
+ * A condition list entry may be a single comparison (`{ field, operator, value }`)
+ * or a nested AND/OR group. The workflow editor authors the flat form, while the
+ * API/imports may use groups — accepting both here is what lets a user actually
+ * save a workflow with a condition.
+ */
+export const ConditionNodeSchema = z.union([ConditionSchema, ConditionGroupSchema])
+export type ConditionNode = z.infer<typeof ConditionNodeSchema>
 
 // ============================================
 // Trigger Configurations
@@ -218,7 +266,7 @@ export const WorkflowStepSchema = z.discriminatedUnion('type', [
 
 export const WorkflowDefinitionSchema = z.object({
   trigger: TriggerConfigSchema,
-  conditions: z.array(ConditionGroupSchema).default([]),
+  conditions: z.array(ConditionNodeSchema).default([]),
   steps: z.array(WorkflowStepSchema).min(1),
 })
 

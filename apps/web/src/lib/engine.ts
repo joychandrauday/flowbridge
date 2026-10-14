@@ -5,6 +5,11 @@ import { JobQueue, JobPayload } from './queue'
 import { executors, StepResult } from './executors'
 import { resolveIntegrations } from './integrations'
 import { buildTemplateContext } from './template-context'
+import { createRunsForLeadEvent, createRunsForLeadStatusChange } from './run-dispatch'
+
+// Re-exported so intake/import/webhook/actions keep importing from '@/lib/engine'
+// (the dispatch logic itself lives in ./run-dispatch to avoid an import cycle).
+export { createRunsForLeadEvent, createRunsForLeadStatusChange }
 
 /**
  * The automation engine (SPEC.md §13 step 6/7).
@@ -142,103 +147,6 @@ async function markRunFailed(prisma: PrismaClient, runId: string, error: string)
     data: { status: 'FAILED', error, finishedAt: new Date() },
   })
   await notifyRunFailure(prisma, runId, error)
-}
-
-/**
- * Creates a WorkflowRun + job for every enabled `lead.created` workflow.
- * Must be called inside the intake transaction (tx) so nothing is lost.
- */
-export async function createRunsForLeadEvent(
-  tx: Prisma.TransactionClient,
-  queue: JobQueue,
-  input: { workspaceId: string; leadId: string; eventId: string }
-): Promise<string[]> {
-  const workflows = await tx.workflow.findMany({
-    where: { workspaceId: input.workspaceId, enabled: true },
-    select: { id: true, version: true, definition: true },
-  })
-
-  const runIds: string[] = []
-  for (const workflow of workflows) {
-    let parsed: ReturnType<typeof WorkflowDefinitionSchema.parse> | null = null
-    try {
-      parsed = WorkflowDefinitionSchema.parse(workflow.definition)
-    } catch {
-      continue // definition is invalid; skip rather than crash intake
-    }
-    if (parsed.trigger.type !== 'lead.created') continue
-
-    try {
-      const run = await tx.workflowRun.create({
-        data: {
-          workspaceId: input.workspaceId,
-          workflowId: workflow.id,
-          workflowVersion: workflow.version,
-          eventId: input.eventId,
-          leadId: input.leadId,
-          status: 'QUEUED',
-        },
-      })
-      await queue.enqueueTx(tx, { workflowRunId: run.id, stepType: 'workflow_run', attempt: 1 })
-      runIds.push(run.id)
-    } catch (error) {
-      // Idempotency guard: @@unique([workflowId, eventId]) means the same
-      // domain event must never produce two runs.
-      if ((error as { code?: string }).code === 'P2002') continue
-      throw error
-    }
-  }
-  return runIds
-}
-
-/**
- * Creates runs for enabled `lead.status_changed` workflows whose trigger config
- * matches the transition. Called inside the status-update transaction so the
- * run cannot be lost (SPEC §2.1).
- */
-export async function createRunsForLeadStatusChange(
-  tx: Prisma.TransactionClient,
-  queue: JobQueue,
-  input: { workspaceId: string; leadId: string; eventId: string; from: string; to: string }
-): Promise<string[]> {
-  const workflows = await tx.workflow.findMany({
-    where: { workspaceId: input.workspaceId, enabled: true },
-    select: { id: true, version: true, definition: true },
-  })
-
-  const runIds: string[] = []
-  for (const workflow of workflows) {
-    let parsed: ReturnType<typeof WorkflowDefinitionSchema.parse> | null = null
-    try {
-      parsed = WorkflowDefinitionSchema.parse(workflow.definition)
-    } catch {
-      continue
-    }
-    if (parsed.trigger.type !== 'lead.status_changed') continue
-
-    const { from, to } = parsed.trigger.config
-    if (from && from !== input.from) continue
-    if (to && to !== input.to) continue
-
-    try {
-      const run = await tx.workflowRun.create({
-        data: {
-          workspaceId: input.workspaceId,
-          workflowId: workflow.id,
-          workflowVersion: workflow.version,
-          eventId: input.eventId,
-          leadId: input.leadId,
-          status: 'QUEUED',
-        },
-      })
-      await queue.enqueueTx(tx, { workflowRunId: run.id, stepType: 'workflow_run', attempt: 1 })
-      runIds.push(run.id)
-    } catch (error) {
-      if ((error as { code?: string }).code === 'P2002') continue
-      throw error
-    }
-  }
-  return runIds
 }
 
 /**
@@ -425,7 +333,8 @@ export async function executeRun(prisma: PrismaClient, queue: JobQueue, workflow
 export async function processRetryJob(prisma: PrismaClient, queue: JobQueue, payload: JobPayload): Promise<boolean> {
   const run = await loadRun(prisma, payload.workflowRunId)
   if (!run) return true
-  if (run.status === 'SUCCEEDED' || run.status === 'FAILED') return true
+  // Terminal (SUCCEEDED/FAILED) or canceled → never resume a retried step.
+  if (!isRunResumable(run.status)) return true
 
   const parsed = WorkflowDefinitionSchema.safeParse(getDefinition(run))
   if (!parsed.success) {

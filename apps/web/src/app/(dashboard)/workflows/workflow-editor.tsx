@@ -10,18 +10,27 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
-import { saveWorkflow, runWorkflowManually } from './actions'
+import { saveWorkflow, runWorkflowManually, testWorkflow } from './actions'
 import {
   ArrowDown,
   ArrowUp,
+  CheckCircle2,
   Code2,
+  FlaskConical,
   Loader2,
   Play,
   Plus,
   Save,
   Trash2,
   X,
+  XCircle,
 } from 'lucide-react'
+
+interface SimulationView {
+  conditionsMet: boolean
+  steps: { id: string; type: string; config: Record<string, unknown>; note?: string }[]
+  warnings: string[]
+}
 
 type TriggerType = 'lead.created' | 'lead.status_changed' | 'lead.no_activity_for' | 'schedule' | 'manual'
 type StepType =
@@ -230,6 +239,9 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
   const [runLeadId, setRunLeadId] = useState(leads[0]?.id ?? '')
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [savedId, setSavedId] = useState<string | null>(workflowId ?? null)
+  const [simLeadId, setSimLeadId] = useState(leads[0]?.id ?? '')
+  const [simulation, setSimulation] = useState<SimulationView | null>(null)
+  const [simDialogOpen, setSimDialogOpen] = useState(false)
 
   const previewJson = useMemo(
     () =>
@@ -294,7 +306,7 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
   const addCondition = () => {
     setDef((prev) => ({
       ...prev,
-      conditions: [...prev.conditions, { field: 'status', operator: 'equals', value: 'NEW' }],
+      conditions: [...prev.conditions, { field: 'lead.status', operator: 'equals', value: 'NEW' }],
     }))
   }
 
@@ -354,6 +366,25 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
     })
   }
 
+  const handleDryRun = () => {
+    startTransition(async () => {
+      const result = await testWorkflow({
+        definition: {
+          trigger: { type: def.trigger.type, config: def.trigger.config },
+          conditions: def.conditions,
+          steps: def.steps,
+        },
+        leadId: simLeadId || null,
+      })
+      if (result.ok) {
+        setSimulation(result.result)
+        setSimDialogOpen(true)
+      } else {
+        toast({ title: 'Dry run failed', description: result.error, variant: 'destructive' })
+      }
+    })
+  }
+
   const memberName = (id: string) => members.find((m) => m.id === id)?.user.name ?? null
 
   return (
@@ -382,6 +413,14 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
           >
             <Play className="mr-1.5 h-4 w-4" aria-hidden="true" />
             Run on lead…
+          </Button>
+          <Button type="button" variant="outline" onClick={handleDryRun} disabled={isPending}>
+            {isPending ? (
+              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <FlaskConical className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            )}
+            Dry run
           </Button>
           <Button type="button" onClick={handleSave} disabled={isPending}>
             {isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
@@ -483,6 +522,19 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
           <CardDescription>Optional — only run the actions when these all match (AND).</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Suggest the allowlisted field paths so a condition can never be
+              authored against a name the evaluator cannot resolve (which would
+              silently disable the workflow). */}
+          <datalist id="condition-field-suggestions">
+            <option value="lead.status" />
+            <option value="lead.source" />
+            <option value="lead.email" />
+            <option value="lead.phone" />
+            <option value="lead.name" />
+            <option value="lead.data.company" />
+            <option value="assignee.name" />
+            <option value="workspace.name" />
+          </datalist>
           {def.conditions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No conditions — the actions run for every matching lead.</p>
           ) : (
@@ -491,10 +543,12 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
                 <div className="space-y-1.5">
                   <Label className="text-xs">Field</Label>
                   <Input
+                    list="condition-field-suggestions"
                     value={condition.field}
                     onChange={(e) => updateCondition(index, { field: e.target.value })}
                     className="w-44"
-                    placeholder="status"
+                    placeholder="lead.status"
+                    aria-label="Condition field"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -684,6 +738,96 @@ export function WorkflowEditor({ workflowId, initialName, initialDescription, in
             <Button type="button" onClick={handleRun} disabled={isPending || !savedId || !runLeadId || leads.length === 0}>
               {isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />}
               Run now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dry-run dialog */}
+      <Dialog open={simDialogOpen} onOpenChange={setSimDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Dry run</DialogTitle>
+            <DialogDescription>
+              What this workflow would do for the selected lead. No emails, messages, or writes happen.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="sim-lead">Run against</Label>
+              <select
+                id="sim-lead"
+                value={simLeadId}
+                onChange={(e) => setSimLeadId(e.target.value)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                {leads.length === 0 && <option value="">Sample lead (no leads yet)</option>}
+                {leads.map((lead) => (
+                  <option key={lead.id} value={lead.id}>
+                    {lead.name}
+                    {lead.email ? ` · ${lead.email}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {simulation && (
+              <div className="space-y-2">
+                <div
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                    simulation.conditionsMet
+                      ? 'border-emerald-500/40 bg-emerald-500/10'
+                      : 'border-amber-500/40 bg-amber-500/10'
+                  }`}
+                >
+                  {simulation.conditionsMet ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-amber-600" aria-hidden="true" />
+                  )}
+                  {simulation.conditionsMet
+                    ? 'Conditions pass — every step below would run.'
+                    : 'Conditions do not pass — the run would stop before any step.'}
+                </div>
+
+                <ol className="space-y-2">
+                  {simulation.steps.map((step, index) => (
+                    <li key={step.id} className="rounded-md border px-3 py-2">
+                      <p className="text-sm font-medium">
+                        {index + 1}. {step.type.replace(/_/g, ' ')}
+                      </p>
+                      {step.note && <p className="text-xs text-muted-foreground">{step.note}</p>}
+                      <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted/50 p-2 text-xs">
+                        {JSON.stringify(step.config, null, 2)}
+                      </pre>
+                    </li>
+                  ))}
+                </ol>
+
+                {simulation.warnings.length > 0 && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                    <p className="text-xs font-medium">Warnings</p>
+                    <ul className="mt-1 list-disc pl-4 text-xs text-muted-foreground">
+                      {simulation.warnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => setSimDialogOpen(false)}>
+              Close
+            </Button>
+            <Button type="button" onClick={handleDryRun} disabled={isPending}>
+              {isPending ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <FlaskConical className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              )}
+              Run again
             </Button>
           </DialogFooter>
         </DialogContent>

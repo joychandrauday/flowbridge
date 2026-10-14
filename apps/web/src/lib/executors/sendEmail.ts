@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { touchLeadActivity } from '../lead-lifecycle'
 
 export const sendEmailExecutor: StepExecutor = {
   type: 'send_email',
@@ -118,6 +119,7 @@ export const sendEmailExecutor: StepExecutor = {
             meta: { to: renderedTo, subject: renderedSubject, messageId: result.messageId },
           },
         })
+        await touchLeadActivity(prisma, lead.id)
       }
 
       return {

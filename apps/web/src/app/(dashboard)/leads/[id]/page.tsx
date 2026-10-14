@@ -7,6 +7,9 @@ import { Badge, BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ConfirmSubmitButton } from '@/components/confirm-submit-button'
 import {
   Activity as ActivityIcon,
   ArrowRight,
@@ -16,9 +19,16 @@ import {
   Mail,
   Phone,
   StickyNote,
+  Trash2,
   UserRound,
 } from 'lucide-react'
-import { updateLeadStatus, addLeadNote, updateLeadAssignee } from '../actions'
+import {
+  updateLeadStatus,
+  addLeadNote,
+  updateLeadAssignee,
+  updateLeadDetails,
+  deleteLead,
+} from '../actions'
 
 export const metadata: Metadata = {
   title: 'Lead | FlowBridge',
@@ -90,6 +100,8 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
     where: { workspaceId },
     select: { id: true, user: { select: { name: true } } },
   })
+
+  const leadData = (lead.data as Record<string, unknown>) || {}
 
   const timeline = [
     ...lead.intakeEvents.map((event) => ({
@@ -298,6 +310,68 @@ export default async function LeadDetailPage({ params }: { params: { id: string 
               </form>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Edit details</CardTitle>
+              <CardDescription>Fix a typo or fill in missing contact info.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={updateLeadDetails} className="space-y-3">
+                <input type="hidden" name="leadId" value={lead.id} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-name" className="text-xs">Name</Label>
+                  <Input id="lead-name" name="name" defaultValue={lead.name} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-email" className="text-xs">Email</Label>
+                  <Input id="lead-email" name="email" type="email" defaultValue={lead.email ?? ''} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-phone" className="text-xs">Phone</Label>
+                  <Input id="lead-phone" name="phone" defaultValue={lead.phone ?? ''} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-source" className="text-xs">Source</Label>
+                  <Input id="lead-source" name="source" defaultValue={lead.source} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="lead-company" className="text-xs">Company</Label>
+                  <Input
+                    id="lead-company"
+                    name="company"
+                    defaultValue={String(leadData.company ?? '')}
+                  />
+                </div>
+                <Button type="submit" size="sm">Save changes</Button>
+              </form>
+            </CardContent>
+          </Card>
+
+          {session.user.role !== 'AGENT' && (
+            <Card className="border-destructive/40">
+              <CardHeader>
+                <CardTitle className="text-destructive">Danger zone</CardTitle>
+                <CardDescription>
+                  Deleting a lead removes its timeline. Runs and tasks are kept for audit.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={deleteLead}>
+                  <input type="hidden" name="leadId" value={lead.id} />
+                  <ConfirmSubmitButton
+                    variant="outline"
+                    size="sm"
+                    confirmText="Delete this lead? This cannot be undone."
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Delete lead
+                  </ConfirmSubmitButton>
+                </form>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

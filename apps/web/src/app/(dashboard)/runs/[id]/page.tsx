@@ -6,8 +6,8 @@ import Link from 'next/link'
 import { Badge, BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowRight, Clock, RefreshCw, Zap } from 'lucide-react'
-import { retryFailedStep } from '../actions'
+import { ArrowRight, Clock, RefreshCw, XCircle, Zap } from 'lucide-react'
+import { cancelRun, retryFailedStep } from '../actions'
 
 export const metadata: Metadata = {
   title: 'Run | FlowBridge',
@@ -106,6 +106,16 @@ export default async function RunDetailPage({ params }: { params: { id: string }
             )}
           </p>
         </div>
+
+        {['QUEUED', 'WAITING', 'RUNNING'].includes(run.status) && (
+          <form action={cancelRun}>
+            <input type="hidden" name="runId" value={run.id} />
+            <Button type="submit" size="sm" variant="outline">
+              <XCircle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Cancel run
+            </Button>
+          </form>
+        )}
       </div>
 
       {run.error && (

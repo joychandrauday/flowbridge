@@ -200,18 +200,22 @@ async function main() {
 
   for (const leadData of leadsData) {
     const { company, ...leadFields } = leadData
-    const lead = await prisma.lead.upsert({
-      where: { email: leadFields.email },
-      update: {},
-      create: {
-        workspaceId: workspace.id,
-        ...leadFields,
-        data: { company, utm_source: leadFields.source },
-        assigneeId: leadFields.status === 'NEW' ? null : agent1Member.id,
-        firstContactedAt: leadFields.status !== 'NEW' ? new Date() : null,
-        lastActivityAt: new Date(),
-      },
-    })
+    // `Lead.email` is not globally unique (SPEC §8 — leads are tenant-scoped),
+    // so dedupe on (workspaceId, email) instead of an upsert on email alone.
+    const lead =
+      (await prisma.lead.findFirst({
+        where: { workspaceId: workspace.id, email: leadFields.email },
+      })) ??
+      (await prisma.lead.create({
+        data: {
+          workspaceId: workspace.id,
+          ...leadFields,
+          data: { company, utm_source: leadFields.source },
+          assigneeId: leadFields.status === 'NEW' ? null : agent1Member.id,
+          firstContactedAt: leadFields.status !== 'NEW' ? new Date() : null,
+          lastActivityAt: new Date(),
+        },
+      }))
 
     // Create the intake activity once, so re-seeding does not pile up duplicates.
     const existingActivity = await prisma.activity.findFirst({

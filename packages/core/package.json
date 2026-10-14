@@ -8,7 +8,9 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
     "./engine/evaluator": "./src/engine/evaluator.ts",
-    "./templates": "./src/templates.ts"
+    "./engine/simulate": "./src/engine/simulate.ts",
+    "./templates": "./src/templates.ts",
+    "./assignment": "./src/assignment.ts"
   },
   "scripts": {
     "build": "tsc",

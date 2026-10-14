@@ -574,3 +574,86 @@ Dashboard layout is a server component (fetches session + heartbeat), passing da
 ### Page header + empty states
 `PageHeader` (title/description/actions/meta) and `EmptyState` (action + template suggestions) standardised.
 
+
+
+## Lifecycle audit (end-to-end realism passes)
+
+A full pass over the lead → run → step → follow-up lifecycle against `SPEC.md`
+surfaced a set of "looks fine on the happy path, breaks in the real world"
+gaps. Each is fixed in code; the reasoning is recorded here so the trade-offs
+are explicit.
+
+### Leads are not globally unique by email
+`SPEC.md` §8 models `Lead.email` as a plain string, but the schema carried a
+global `@unique`. Two workspaces could never capture the same person (a shared
+contact, a consultant's client), and a form re-submission by a *different*
+workspace collided. Removed the global unique; the intake pipeline still
+dedupes within a workspace on `(workspaceId, email)`, and added
+`@@index([workspaceId, phone])` so phone-based dedupe/merge stays cheap.
+
+### `assign` no longer marks a lead `CONTACTED`
+The `assign` executor used to flip the lead to `CONTACTED`. That silently broke
+the documented escalation flow ("a lead still `NEW` after 24h → escalate"):
+the 24h timer fires on leads nobody has spoken to, but the workflow that was
+supposed to *route* the lead had already marked it contacted. Assignment is a
+routing event, not a human touch — it now records an `assignment` activity and
+bumps `lastActivityAt`, but leaves `status` alone.
+
+### Durable round-robin
+Round-robin used to be recomputed from `count(leads)` each run, so two leads
+arriving in the same minute both "won" the same index and landed on one agent.
+The cursor now lives on `Workflow.assignmentPointer` and is incremented
+atomically (`{ increment: 1 }`) when a member is picked. Pure selection lives in
+`packages/core/src/assignment.ts` (`pickRoundRobinIndex`) with unit tests.
+
+### Intake is upsert-ish, not insert-only
+SPEC §4.1 says intake "creates **or updates** a Lead". The pipeline now merges a
+repeat submission into the existing `(workspaceId, email)` lead inside the same
+transaction — the `IntakeEvent` is still always persisted (no event loss), but
+the lead is not duplicated. `normalizeEmail` (lowercase + trim) is applied on
+every path.
+
+### One activity clock, one first-contact rule
+`lastActivityAt` drives the `lead.no_activity_for` trigger; `firstContactedAt`
+drives first-response reporting. Both had drifted (some executors bumped
+activity, some didn't; manual status changes set first-contact differently than
+workflows). They are now centralised in `apps/web/src/lib/lead-lifecycle.ts`
+(`touchLeadActivity`, `deriveFirstContactedAt`) and called from every executor
+and every server action.
+
+### Status changes fan out to workflows
+Automated `update_field` status changes now dispatch `lead.status_changed` runs
+through the same path as manual ones, so a workflow chain is observably
+consistent regardless of what moved the status.
+
+### Runs can be cancelled
+`RunStatus.CANCELED` existed in the schema with no way to reach it. Added a
+`cancelRun` action and a button on the run detail page; the engine treats a
+`CANCELED` run as terminal and stops resuming its steps.
+
+### Tick fails closed in production
+`/api/internal/tick` previously no-op'd auth when `CRON_SECRET` was unset. In
+production that is a public job runner. It now returns `503` when
+`CRON_SECRET` is missing and `NODE_ENV === 'production'`, and only allows an
+unauthenticated call in development.
+
+### Workflows are editable and testable before they run
+Two editor gaps: (1) a condition saved as a bare `{field, operator, value}`
+could not pass `WorkflowDefinitionSchema`, which only accepted nested
+`ConditionGroup`s — so *adding a condition made a workflow unsaveable*. The
+schema now accepts `Condition | ConditionGroup` (`ConditionNodeSchema`) and the
+evaluator handles both. (2) There was no way to see what a workflow would do.
+Added a side-effect-free `simulateWorkflow` in `packages/core`, a `testWorkflow`
+server action, and a **Dry run** dialog that renders each step against a chosen
+lead and flags unresolved `{{templates}}` and unmet conditions.
+
+### Manual lead CRUD
+An owner entering a lead by hand had no path (CSV import only). Added
+`/leads/new` and edit/delete on the lead detail page. A manually-created lead
+runs through the *same* intake transaction as a form submission, so it records
+an `IntakeEvent` and triggers `lead.created` workflows. Agents can create and
+edit their own leads; delete is Owner/Admin only.
+
+### Tasks can be reopened
+A follow-up that "came back" had no path from `DONE`; added `reopenTask` and an
+**Overdue only** filter on the task list.

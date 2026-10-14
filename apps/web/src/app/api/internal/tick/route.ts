@@ -6,10 +6,17 @@ import { runTick } from '@/lib/engine'
 const CRON_SECRET = process.env.CRON_SECRET
 const WORKER_ID = `worker-${process.env.VERCEL_DEPLOYMENT_ID || 'local'}`
 
-// Verify cron authorization
+// Verify cron authorization. The tick drives every outbound action, so a
+// missing CRON_SECRET must fail closed in production — an open endpoint lets
+// anyone run workflows and send email/Telegram on the deployment's behalf.
+// Local dev / preview without a secret stays usable; production does not.
 function verifyCronAuth(request: NextRequest): boolean {
   if (!CRON_SECRET) {
-    console.warn('CRON_SECRET not set, skipping auth check')
+    if (process.env.NODE_ENV === 'production') {
+      console.error('CRON_SECRET is not set — refusing to run the tick endpoint in production')
+      return false
+    }
+    console.warn('CRON_SECRET not set (non-production), skipping auth check')
     return true
   }
   const auth = request.headers.get('authorization')

@@ -9,6 +9,8 @@ import { JobQueue } from '@/lib/queue'
 import { drainNow } from '@/lib/engine'
 import { WorkflowDefinitionSchema } from '@flowbridge/core/schema'
 import { getWorkflowTemplate } from '@flowbridge/core/templates'
+import { simulateWorkflow } from '@flowbridge/core'
+import { buildTemplateContext } from '@/lib/template-context'
 
 /** Toggle a workflow's enabled flag — form-action, server-only. */
 export async function toggleWorkflow(formData: FormData) {
@@ -167,4 +169,70 @@ export async function createWorkflowFromTemplate(formData: FormData) {
 
   revalidatePath('/workflows')
   redirect(`/workflows/${created.id}/edit`)
+}
+/**
+ * Dry-run a workflow definition (SPEC §10 "Test" button). Renders every step
+ * against a real lead (or a sample) and evaluates the conditions **without any
+ * side effects** — no email, no message, no database writes. Returns a plan the
+ * editor can display.
+ */
+export async function testWorkflow(input: {
+  definition: unknown
+  leadId?: string | null
+}) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) {
+    return { ok: false as const, error: 'Unauthorized' }
+  }
+  const workspaceId = session.user.workspaceId
+
+  let definition
+  try {
+    definition = WorkflowDefinitionSchema.parse(input.definition)
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : 'Invalid workflow definition',
+    }
+  }
+
+  const [lead, workspace, sampleMember] = await Promise.all([
+    input.leadId
+      ? prisma.lead.findFirst({
+          where: { id: input.leadId, workspaceId },
+          include: { assignee: { include: { user: true } } },
+        })
+      : null,
+    prisma.workspace.findUnique({ where: { id: workspaceId } }),
+    prisma.member.findFirst({
+      where: { workspaceId },
+      include: { user: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ])
+
+  const assignee = lead?.assignee ?? sampleMember
+  const context = buildTemplateContext({
+    lead:
+      lead ?? {
+        id: 'sample-lead',
+        name: 'Sample Lead',
+        email: 'sample@example.com',
+        phone: '+1 555 0100',
+        source: 'website',
+        status: 'NEW',
+        data: { company: 'Acme Inc' },
+        assigneeId: null,
+      },
+    assignee,
+    workspace: {
+      id: workspaceId,
+      name: workspace?.name ?? 'Workspace',
+      slug: workspace?.slug ?? 'workspace',
+    },
+    trigger: definition.trigger,
+  })
+
+  const result = simulateWorkflow(definition, { ...context, lead: context.lead ?? {} })
+  return { ok: true as const, result }
 }

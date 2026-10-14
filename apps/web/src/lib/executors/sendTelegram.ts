@@ -1,5 +1,6 @@
 import { StepExecutor, StepResult, leadTemplate } from './types'
 import { renderTemplateValue } from '@flowbridge/core/engine/evaluator'
+import { touchLeadActivity } from '../lead-lifecycle'
 
 export const sendTelegramExecutor: StepExecutor = {
   type: 'send_telegram',
@@ -76,6 +77,7 @@ export const sendTelegramExecutor: StepExecutor = {
             meta: { logOnly: true, chatId: targetChatId ?? null },
           },
         })
+        await touchLeadActivity(prisma, lead.id)
       }
       return { success: true, output: { logOnly: true, chatId: targetChatId ?? null } }
     }
@@ -111,6 +113,7 @@ export const sendTelegramExecutor: StepExecutor = {
             meta: { chatId: targetChatId, messageId: data.result?.message_id },
           },
         })
+        await touchLeadActivity(prisma, lead.id)
       }
 
       return { success: true, output: { messageId: data.result?.message_id, chatId: targetChatId } }

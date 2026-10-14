@@ -156,7 +156,7 @@ model Lead {
   id               String      @id @default(cuid())
   workspaceId      String
   name             String
-  email            String?     @unique
+  email            String?
   phone            String?
   source           String
   status           LeadStatus  @default(NEW)
@@ -177,6 +177,7 @@ model Lead {
   @@index([workspaceId, status])
   @@index([workspaceId, assigneeId])
   @@index([workspaceId, email])
+  @@index([workspaceId, phone])
   @@index([workspaceId, createdAt])
 }
 
@@ -229,6 +230,10 @@ model Workflow {
   enabled     Boolean  @default(true)
   version     Int      @default(1)
   definition  Json     // Zod-validated WorkflowDefinition
+  // Persisted round-robin cursor (SPEC §4.3). Incremented atomically each time
+  // an `assign`/`create_task` step picks a member, so consecutive leads rotate
+  // across the team instead of all landing on one agent.
+  assignmentPointer Int @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

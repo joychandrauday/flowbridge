@@ -56,3 +56,40 @@ export async function retryFailedStep(formData: FormData) {
   revalidatePath(`/runs/${run.id}`)
   revalidatePath('/runs')
 }
+
+/**
+ * Cancel a non-terminal run (SPEC §8 `CANCELED`). A run parked on a delay or
+ * waiting on a retry would otherwise be unstoppable. We also fail its queued
+ * jobs so the next tick cannot pick them back up.
+ */
+export async function cancelRun(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+
+  const runId = formData.get('runId')
+  if (typeof runId !== 'string') return
+
+  const run = await prisma.workflowRun.findFirst({
+    where: { id: runId, workspaceId: session.user.workspaceId },
+  })
+  if (!run) return
+  if (run.status === 'SUCCEEDED' || run.status === 'FAILED' || run.status === 'CANCELED') return
+
+  await prisma.workflowRun.update({
+    where: { id: run.id },
+    data: { status: 'CANCELED', finishedAt: new Date(), error: 'Canceled by user' },
+  })
+
+  // Drop any queued/claimed job for this run so the next tick cannot resume it.
+  await prisma.job.updateMany({
+    where: {
+      status: { in: ['PENDING', 'CLAIMED'] },
+      payload: { path: ['workflowRunId'], equals: run.id },
+    },
+    data: { status: 'FAILED', error: 'Canceled by user', completedAt: new Date() },
+  })
+
+  revalidatePath(`/runs/${run.id}`)
+  revalidatePath('/runs')
+  revalidatePath('/dashboard')
+}

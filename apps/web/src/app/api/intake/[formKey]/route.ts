@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { validateIntakeSubmission, FormFieldSchema, FormSettingsSchema, type Form } from '@flowbridge/core'
 import { z } from 'zod'
 import { prisma } from '@flowbridge/db'
-import { Prisma } from '@prisma/client'
 import { JobQueue } from '@/lib/queue'
-import { createRunsForLeadEvent, drainNow } from '@/lib/engine'
+import { recordIntake } from '@/lib/intake'
+import { drainNow } from '@/lib/engine'
 import { createRateLimiter } from '@/lib/rate-limit'
+
+// Cap the payload before we parse it (SPEC §3 "Cap payload size").
+const MAX_BODY_BYTES = 100_000
 
 // Process-local fixed-window limiter (SPEC §3); see lib/rate-limit.ts.
 const rateLimiter = createRateLimiter()
@@ -28,6 +31,12 @@ export async function POST(
     // Get client IP for rate limiting
     const ip = getClientIp(request)
     const userAgent = request.headers.get('user-agent') || undefined
+
+    // Reject oversized bodies before reading/parsing them.
+    const declaredLength = Number(request.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 })
+    }
 
     // Parse form data
     const contentType = request.headers.get('content-type') || ''
@@ -134,62 +143,26 @@ export async function POST(
       )
     }
 
-    // Create IntakeEvent, Lead, WorkflowRuns and Jobs atomically (SPEC §2.1),
-    // so no event is ever lost between the write and the queue.
+    // Create IntakeEvent, Lead (create-or-update), WorkflowRuns and Jobs
+    // atomically (SPEC §2.1/§4.1), so no event is ever lost between the write
+    // and the queue. A repeat submission for an existing lead updates it.
     const queue = new JobQueue(prisma, `worker-intake-${Date.now()}`)
-
-    // Extract lead data from validated payload
     const validatedData = validation.data as Record<string, unknown>
-    const leadData = {
-      name: (validatedData.name as string) || 'Unknown',
-      email: validatedData.email as string | null,
-      phone: validatedData.phone as string | null,
-      source: 'form',
-      status: 'NEW' as const,
-      data: validatedData,
-    }
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Create IntakeEvent
-      const intakeEvent = await tx.intakeEvent.create({
-        data: {
-          workspaceId: form.workspaceId,
-          formId: form.id,
-          source: 'form',
-          payload: validatedData as Prisma.InputJsonValue,
-          ip,
-          userAgent,
-        },
-      })
-
-      // Create Lead
-      const lead = await tx.lead.create({
-        data: {
-          workspaceId: form.workspaceId,
-          name: leadData.name,
-          email: leadData.email,
-          phone: leadData.phone,
-          source: leadData.source,
-          status: leadData.status,
-          data: leadData.data as Prisma.InputJsonValue,
-        },
-      })
-
-      // Link intake event to lead
-      await tx.intakeEvent.update({
-        where: { id: intakeEvent.id },
-        data: { leadId: lead.id },
-      })
-
-      // Enqueue matching `lead.created` workflows in the same transaction
-      const runIds = await createRunsForLeadEvent(tx, queue, {
+    const result = await prisma.$transaction((tx) =>
+      recordIntake(tx, queue, {
         workspaceId: form.workspaceId,
-        leadId: lead.id,
-        eventId: intakeEvent.id,
+        formId: form.id,
+        source: 'form',
+        name: (validatedData.name as string) || 'Unknown',
+        email: validatedData.email as string | null,
+        phone: validatedData.phone as string | null,
+        data: validatedData,
+        payload: validatedData,
+        ip,
+        userAgent,
       })
-
-      return { intakeEvent, lead, runIds }
-    })
+    )
 
     // Best-effort immediate drain; the cron tick is the durable fallback.
     drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
@@ -199,7 +172,8 @@ export async function POST(
       {
         success: true,
         message: typedForm.settings.successMessage,
-        leadId: result.lead.id,
+        leadId: result.leadId,
+        duplicate: !result.created,
       },
       { status: 202 }
     )

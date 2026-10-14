@@ -146,12 +146,24 @@ interface SidebarMenuButtonProps extends React.ComponentProps<'button'> {
   isActive?: boolean
 }
 
-const SidebarMenuButton = React.forwardRef<HTMLElement, SidebarMenuButtonProps>(
+const SidebarMenuButton = React.forwardRef<React.ElementRef<'button'>, SidebarMenuButtonProps>(
   ({ className, asChild = false, isActive, children, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button'
+    const buttonContent = (
+      <>
+        {isActive ? (
+          <span
+            aria-hidden="true"
+            className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-brand"
+          />
+        ) : null}
+        {children}
+      </>
+    )
+
     return (
       <Comp
-        ref={ref as never}
+        ref={ref}
         data-active={isActive ? 'true' : 'false'}
         aria-current={isActive ? 'page' : undefined}
         className={cn(
@@ -167,13 +179,7 @@ const SidebarMenuButton = React.forwardRef<HTMLElement, SidebarMenuButtonProps>(
         )}
         {...props}
       >
-        {isActive ? (
-          <span
-            aria-hidden="true"
-            className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-brand"
-          />
-        ) : null}
-        {children}
+        {asChild ? children : buttonContent}
       </Comp>
     )
   }
