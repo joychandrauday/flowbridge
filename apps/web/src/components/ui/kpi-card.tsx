@@ -1,58 +1,88 @@
+import * as React from 'react'
+import { AlertTriangle, Mail, TrendingUp, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 
+/**
+ * A dashboard reading, not a decorative tile: label, figure, and — when there
+ * is real history behind it — the movement against last week. The figure is set
+ * in tabular figures so a row of cards lines up, and the icon stays muted in the
+ * corner rather than sitting in a filled square.
+ *
+ * A negative movement is deliberately *not* red: red in this product means an
+ * automation failed, and a quiet week is not a failure.
+ */
 interface KPICardProps {
   title: string
   value: string | number
   icon: string
   variant?: 'default' | 'primary' | 'destructive' | 'success'
   trend?: { value: number; label: string }
+  /** Small secondary reading, e.g. "of 128 total". */
+  detail?: React.ReactNode
+  href?: string
 }
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  Users: () => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  Mail: () => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
-  TrendingUp: () => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
-  AlertTriangle: () => <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>,
+  Users,
+  Mail,
+  TrendingUp,
+  AlertTriangle,
 }
 
-export function KPICard({ title, value, icon: IconName, variant = 'default', trend }: KPICardProps) {
-  const Icon = iconMap[IconName] || (() => <div className="h-5 w-5" />)
+export function KPICard({ title, value, icon, variant = 'default', trend, detail, href }: KPICardProps) {
+  const Icon = iconMap[icon] ?? TrendingUp
+  const isAlert = variant === 'destructive'
 
-  const variantClasses = {
-    default: 'border-l-4 border-primary',
-    primary: 'border-l-4 border-primary',
-    destructive: 'border-l-4 border-destructive',
-    success: 'border-l-4 border-green-500',
-  }
-
-  return (
-    <Card className={cn(variantClasses[variant])}>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold tracking-tight">{value}</p>
-            {trend && (
-              <div
+  const body = (
+    <CardContent className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-[13px] font-medium text-muted-foreground">{title}</p>
+          <p
+            className={cn(
+              'metric text-[28px] font-semibold leading-none tracking-display',
+              isAlert && 'text-destructive'
+            )}
+          >
+            {value}
+          </p>
+          {detail ? <div className="text-[13px] text-muted-foreground">{detail}</div> : null}
+          {trend ? (
+            <div className="flex items-center gap-1.5 text-[13px]">
+              <span
                 className={cn(
-                  'flex items-center gap-1 text-sm',
-                  trend.value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-destructive'
+                  'metric font-medium',
+                  trend.value > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'
                 )}
               >
-                <span className="font-medium">
-                  {trend.value >= 0 ? '+' : ''}
-                  {trend.value}%
-                </span>
-                <span className="text-muted-foreground">{trend.label}</span>
-              </div>
-            )}
-          </div>
-          <div className="p-3 rounded-lg bg-muted/50">
-            <Icon />
-          </div>
+                {trend.value > 0 ? '+' : ''}
+                {trend.value}%
+              </span>
+              <span className="text-muted-foreground">{trend.label}</span>
+            </div>
+          ) : null}
         </div>
-      </CardContent>
-    </Card>
+        <Icon
+          aria-hidden="true"
+          className={cn(
+            'mt-0.5 size-4 shrink-0',
+            isAlert ? 'text-destructive' : 'text-muted-foreground/70'
+          )}
+        />
+      </div>
+    </CardContent>
   )
+
+  if (href) {
+    return (
+      <Card className="flow-lift cursor-pointer hover:border-primary/40 hover:shadow-raised">
+        <a href={href} className="block rounded-card focus-visible:outline-none">
+          {body}
+        </a>
+      </Card>
+    )
+  }
+
+  return <Card className="flow-lift hover:border-primary/40 hover:shadow-raised">{body}</Card>
 }

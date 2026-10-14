@@ -2,50 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * FlowBridge design tokens.
+ *
+ * The palette is taken from the brand mark itself: `public/icon.png` is a white
+ * field carrying a deep navy (#121F35) and a single azure (#2B7EDE). The app's
+ * accent *is* the logo's accent — anything else would fight the mark it sits
+ * next to. Values are raw HSL triples so Tailwind can compose opacity.
+ *
+ * Contrast decisions worth knowing:
+ *  - `--primary` is the logo azure darkened to hsl(213 71% 42%) (#1F63B8). The
+ *    literal azure only reaches 4.13:1 against white, which fails WCAG AA for
+ *    button labels; #1F63B8 clears it at 6.01:1.
+ *  - `--brand` keeps the literal, undarkened azure for *graphics* only — the
+ *    logo, lamps, chart strokes — where no text sits on top of it.
+ *  - Red is reserved for machine failure (a failed run). Business outcomes
+ *    (lost, won) never use it, so red always means "the automation broke".
+ */
+
 @layer base {
   :root {
+    /* Surfaces */
+    --canvas: 214 42% 97%; /* app background: cool near-white, not cream */
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 218 51% 10%; /* ink */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 218 51% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 158 64% 52%; /* Emerald */
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 158 64% 52%;
-    --radius: 0.5rem;
+    --popover-foreground: 218 51% 10%;
+    --sidebar: 218 38% 13%; /* navy rail, from the mark */
+    --sidebar-foreground: 213 30% 78%;
+    --sidebar-accent: 215 45% 24%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 217 34% 22%;
+    --sidebar-ring: 212 73% 52%;
+
+    /* Brand */
+    --brand: 212 73% 52%; /* the literal azure — graphics only */
+    --primary: 213 71% 42%; /* AA-safe interactive azure */
+    --primary-foreground: 0 0% 100%;
+
+    /* Neutrals */
+    --secondary: 214 30% 95%;
+    --secondary-foreground: 218 40% 18%;
+    --muted: 214 28% 95.5%;
+    --muted-foreground: 216 16% 44%;
+    --accent: 214 30% 94%;
+    --accent-foreground: 218 40% 18%;
+    --border: 215 24% 89%;
+    --input: 215 24% 87%;
+    --ring: 213 71% 42%;
+
+    /* Semantics */
+    --destructive: 0 72% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 30%;
+    --warning: 32 80% 36%;
+
+    /* Elevation — navy-tinted, so shadows sit in the same colour family as ink */
+    --shadow-card: 0 1px 2px 0 hsl(218 51% 10% / 0.05);
+    --shadow-raised: 0 1px 3px 0 hsl(218 51% 10% / 0.08), 0 1px 2px -1px hsl(218 51% 10% / 0.06);
+    --shadow-overlay: 0 12px 32px -8px hsl(218 51% 10% / 0.18), 0 4px 10px -4px hsl(218 51% 10% / 0.1);
+
+    /* Radii — a deliberate hierarchy, not one value everywhere */
+    --radius-control: 6px;
+    --radius-card: 10px;
+    --radius: 10px; /* shadcn internals (lg/md/sm) derive from this */
+
+    /* ── Motion ────────────────────────────────────────────────────────────
+     * One curve, three durations, used everywhere. The curve is a soft
+     * ease-out: fast to start, gently settling — "flow" rather than "snap".
+     * Never mix in a different easing; inconsistency is what makes motion feel
+     * noisy rather than smooth. */
+    --flow-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+    --flow-ease-inout: cubic-bezier(0.5, 0, 0.2, 1);
+    --flow-fast: 140ms;
+    --flow-base: 220ms;
+    --flow-slow: 420ms;
+    --flow-stagger: 28ms;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 158 64% 52%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 158 64% 52%;
+    --canvas: 218 42% 7%;
+    --background: 218 38% 10%;
+    --foreground: 213 30% 93%;
+    --card: 218 36% 12%;
+    --card-foreground: 213 30% 93%;
+    --popover: 218 38% 13%;
+    --popover-foreground: 213 30% 93%;
+    --sidebar: 219 45% 8%;
+    --sidebar-foreground: 213 24% 72%;
+    --sidebar-accent: 215 45% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 217 32% 17%;
+    --sidebar-ring: 212 73% 52%;
+
+    --brand: 212 76% 62%;
+    --primary: 212 76% 58%;
+    --primary-foreground: 218 52% 8%;
+
+    --secondary: 217 30% 18%;
+    --secondary-foreground: 213 30% 93%;
+    --muted: 217 28% 17%;
+    --muted-foreground: 215 18% 62%;
+    --accent: 217 30% 20%;
+    --accent-foreground: 213 30% 93%;
+    --border: 217 26% 21%;
+    --input: 217 26% 24%;
+    --ring: 212 76% 58%;
+
+    --destructive: 0 68% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 50%;
+    --warning: 38 82% 60%;
+
+    --shadow-card: 0 1px 2px 0 hsl(0 0% 0% / 0.3);
+    --shadow-raised: 0 1px 3px 0 hsl(0 0% 0% / 0.38), 0 1px 2px -1px hsl(0 0% 0% / 0.3);
+    --shadow-overlay: 0 12px 34px -8px hsl(0 0% 0% / 0.55), 0 4px 12px -4px hsl(0 0% 0% / 0.4);
   }
 }
 
@@ -53,9 +126,27 @@
   * {
     @apply border-border;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-canvas text-foreground;
+    font-feature-settings: 'cv05' 1, 'ss01' 1; /* Archivo: clearer l, single-storey-free a */
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Keyboard focus is always visible, and always the accent. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Machine data: identifiers, durations, keys, cron, JSON. Tabular figures so
+   * columns of numbers line up without manual alignment. */
+  .metric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
   }
 }
 
@@ -66,5 +157,117 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* A thin, quiet scrollbar for panels that scroll inside the page. */
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  /* ── "Smooth flow" ──────────────────────────────────────────────────────
+   * One orchestrated entrance per screen rather than a fade on every element:
+   * direct children settle in sequence, and the sequence is capped so a long
+   * list cannot become a slow curtain. Depth is 6px — enough to read as
+   * arrival, small enough not to move the layout. */
+  .flow-in > * {
+    animation: flow-rise var(--flow-base) var(--flow-ease) both;
+  }
+  .flow-in > *:nth-child(1) { animation-delay: calc(var(--flow-stagger) * 0); }
+  .flow-in > *:nth-child(2) { animation-delay: calc(var(--flow-stagger) * 1); }
+  .flow-in > *:nth-child(3) { animation-delay: calc(var(--flow-stagger) * 2); }
+  .flow-in > *:nth-child(4) { animation-delay: calc(var(--flow-stagger) * 3); }
+  .flow-in > *:nth-child(5) { animation-delay: calc(var(--flow-stagger) * 4); }
+  .flow-in > *:nth-child(6) { animation-delay: calc(var(--flow-stagger) * 5); }
+  .flow-in > *:nth-child(7) { animation-delay: calc(var(--flow-stagger) * 6); }
+  .flow-in > *:nth-child(8) { animation-delay: calc(var(--flow-stagger) * 7); }
+  .flow-in > *:nth-child(n + 9) { animation-delay: calc(var(--flow-stagger) * 8); }
+
+  .flow-fade {
+    animation: flow-fade var(--flow-base) var(--flow-ease) both;
+  }
+
+  /* Hover/active feedback shared by rows, cards and tiles. */
+  .flow-lift {
+    transition:
+      transform var(--flow-fast) var(--flow-ease),
+      box-shadow var(--flow-fast) var(--flow-ease),
+      border-color var(--flow-fast) var(--flow-ease),
+      background-color var(--flow-fast) var(--flow-ease);
+  }
+  .flow-lift:hover {
+    transform: translateY(-1px);
+  }
+  .flow-lift:active {
+    transform: translateY(0);
+  }
+
+  /* A rail that fills as work progresses — used by the pipeline and the run
+   * step timeline, where the content genuinely is a sequence. */
+  .flow-rail {
+    transition: height var(--flow-slow) var(--flow-ease);
+  }
+}
+
+@keyframes flow-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes flow-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The engine heartbeat. Slow and calm — it marks a real 1-minute tick, so it
+ * breathes at roughly the rate of the thing it represents. */
+@keyframes flow-pulse {
+  0% {
+    box-shadow: 0 0 0 0 hsl(var(--brand) / 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 6px hsl(var(--brand) / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--brand) / 0);
+  }
+}
+
+/* A live run: the one place motion signals "work in progress". */
+@keyframes flow-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-in > *,
+  .flow-fade {
+    animation: none !important;
+  }
+  .flow-lift:hover,
+  .flow-lift:active {
+    transform: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

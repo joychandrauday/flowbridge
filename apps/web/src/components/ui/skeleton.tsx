@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 
 /** Animated placeholder used by route-level `loading.tsx` states. */
 function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('animate-pulse rounded-md bg-muted', className)} {...props} />
+  return <div className={cn('animate-pulse rounded-control bg-muted/70', className)} {...props} />
 }
 
 export { Skeleton }

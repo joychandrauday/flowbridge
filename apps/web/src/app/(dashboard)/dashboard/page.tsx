@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { KPICard } from '@/components/ui/kpi-card'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatusLamp, statusTone } from '@/components/ui/status-lamp'
 import { LeadsBySourceChart } from '@/components/charts/leads-by-source'
 import { ResponseTimeChart } from '@/components/charts/response-time'
 import { RecentRuns } from '@/components/dashboard/recent-runs'
@@ -131,13 +133,11 @@ export default async function DashboardPage() {
   }))
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Overview of your lead automation pipeline</p>
-        </div>
-      </div>
+    <div className="space-y-6 motion-safe:animate-flow-fade">
+      <PageHeader
+        title="Dashboard"
+        description="Overview of your lead automation pipeline"
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
