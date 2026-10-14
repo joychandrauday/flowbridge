@@ -168,7 +168,7 @@ pnpm dev                    # http://localhost:3000
 | `SMTP_PROVIDER` / `RESEND_API_KEY` | optional | Force `smtp` \| `resend` \| `log`; Resend is used when `SMTP_PROVIDER=resend`. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_DEFAULT_CHAT_ID` | optional | Used by the seed's demo bot + as a fallback. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google OAuth. The sign-in button is rendered **only** when both are set — see [Google sign-in](#google-sign-in) below. |
-| `DEMO_EMAIL` / `DEMO_PASSWORD` / `DEMO_NAME` / `DEMO_LOGIN` | optional | The public demo account shown on the sign-in page. `DEMO_LOGIN=false` hides it. |
+| `DEMO_EMAIL` / `DEMO_PASSWORD` / `DEMO_NAME` / `DEMO_LOGIN` | optional | The public demo account shown on the sign-in page. **Off unless `DEMO_LOGIN=true`**; re-run `pnpm db:seed` after enabling. |
 | `NEXT_PUBLIC_APP_URL` | optional | Absolute URL used in embed snippets and lead links. |
 
 Generate a valid `ENCRYPTION_KEY`:
@@ -207,20 +207,20 @@ step 4 does not match the URL you are signing in from exactly.
 
 ### Demo credentials (from `pnpm db:seed`)
 
-The **Demo** row is also published on the sign-in page (`DEMO_EMAIL` /
-`DEMO_PASSWORD`, defaulting to the values below) so anyone can explore the
-seeded workspace in one click. It is a `OWNER` of `demo-agency`.
+The **Demo** row only exists when the deployment opts in with **`DEMO_LOGIN=true`**
+(set it in `apps/web/.env.local`, `packages/db/.env` and on the host, then
+re-run `pnpm db:seed`). It is then also shown on the sign-in page
+(`DEMO_EMAIL` / `DEMO_PASSWORD`) for one-click access, and is an `OWNER` of
+`demo-agency`. With the variable unset the account is not created and the panel
+is hidden — the safe default.
 
 | Role | Email | Password |
 |---|---|---|
-| Demo (public sign-in) | `hello@g2gdigital.com` | `demo123` |
+| Demo (opt-in, public sign-in) | `hello@g2gdigital.com` | `demo123` |
 | Owner (Rafi) | `owner@demo.flowbridge` | `demo123` |
 | Admin (Sam) | `admin@demo.flowbridge` | `demo123` |
 | Agent (Nila) | `agent1@demo.flowbridge` | `demo123` |
 | Agent (Kiran) | `agent2@demo.flowbridge` | `demo123` |
-
-Set `DEMO_LOGIN=false` (in `apps/web/.env.local` and on the host) to hide the
-demo panel before any non-demo deployment.
 
 Seeded workspace slug: **`demo-agency`** · Seeded public form: **`/f/contact-form`**.
 

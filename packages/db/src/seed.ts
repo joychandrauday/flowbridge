@@ -1,7 +1,7 @@
 import { prisma } from './client'
 import { hash } from 'bcryptjs'
 import { Prisma } from '@prisma/client'
-import { deriveEncryptionKey, encryptJsonWithKey, resolveDemoAccount } from '@flowbridge/core'
+import { deriveEncryptionKey, encryptJsonWithKey, isDemoLoginEnabled, resolveDemoAccount } from '@flowbridge/core'
 import { DEMO_WORKFLOWS } from './demo-workflows'
 import { DEMO_FORM } from './demo-form'
 import { buildEmailIntegrationConfig } from './email-integration'
@@ -85,22 +85,24 @@ async function main() {
     },
   })
 
-  // Public demo account (see packages/core/src/demo.ts). Its credentials are
-  // rendered on the sign-in page so an evaluator can explore the seeded
-  // workspace without signing up. Unlike the users above, re-seeding converges
-  // name *and* password: the login page advertises whatever DEMO_PASSWORD
-  // resolves to, so the stored hash has to follow it or the advertised login
-  // would fail.
+  // Public demo account (see packages/core/src/demo.ts). Opt-in: only created
+  // when DEMO_LOGIN=true, so a routine deployment never ends up with a live
+  // login whose password is printed in the README. The login page advertises
+  // exactly what this resolver returns, so on re-seed the name *and* password
+  // converge to the env value (unlike the users above, which are left alone).
   const demoAccount = resolveDemoAccount(process.env)
-  const demoUser = await prisma.user.upsert({
-    where: { email: demoAccount.email },
-    update: { name: demoAccount.name, password: await hash(demoAccount.password, 12) },
-    create: {
-      email: demoAccount.email,
-      name: demoAccount.name,
-      password: await hash(demoAccount.password, 12),
-    },
-  })
+  const demoEnabled = isDemoLoginEnabled(process.env)
+  const demoUser = demoEnabled
+    ? await prisma.user.upsert({
+        where: { email: demoAccount.email },
+        update: { name: demoAccount.name, password: await hash(demoAccount.password, 12) },
+        create: {
+          email: demoAccount.email,
+          name: demoAccount.name,
+          password: await hash(demoAccount.password, 12),
+        },
+      })
+    : null
 
   console.log('✅ Users created')
 
@@ -131,11 +133,13 @@ async function main() {
 
   // The demo account is OWNER so an evaluator sees every screen — settings,
   // integrations and run history — since it is the workspace built to explore.
-  await prisma.member.upsert({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: demoUser.id } },
-    update: { role: 'OWNER', available: true },
-    create: { workspaceId: workspace.id, userId: demoUser.id, role: 'OWNER', available: true },
-  })
+  if (demoUser) {
+    await prisma.member.upsert({
+      where: { workspaceId_userId: { workspaceId: workspace.id, userId: demoUser.id } },
+      update: { role: 'OWNER', available: true },
+      create: { workspaceId: workspace.id, userId: demoUser.id, role: 'OWNER', available: true },
+    })
+  }
 
   console.log('✅ Members created')
 
@@ -307,7 +311,7 @@ async function main() {
   console.log('🎉 Seeding completed!')
   console.log('')
   console.log('Demo credentials:')
-  console.log(`  Demo:   ${demoAccount.email} / ${demoAccount.password}`)
+  if (demoEnabled) console.log(`  Demo:   ${demoAccount.email} / ${demoAccount.password}`)
   console.log('  Owner:  owner@demo.flowbridge / demo123')
   console.log('  Admin:  admin@demo.flowbridge / demo123')
   console.log('  Agent:  agent1@demo.flowbridge / demo123')

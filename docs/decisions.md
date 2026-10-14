@@ -522,25 +522,34 @@ Fix, two parts:
 
 ### A public demo account, resolved once and shared
 
-The sign-in page now offers a seeded demo login so an evaluator reaches the
+The sign-in page can offer a seeded demo login so an evaluator reaches the
 golden path without registering. The account is defined once, in
 `packages/core/src/demo.ts` (`resolveDemoAccount` / `isDemoLoginEnabled`), and
 read by *both* `packages/db/src/seed.ts` and the login page from the same
 `DEMO_EMAIL` / `DEMO_PASSWORD` / `DEMO_NAME` / `DEMO_LOGIN` env vars — the
 alternative (constants duplicated in the seed and the UI) drifts the moment
 either is edited, and the page would advertise a password the database does not
-have. Defaults (`hello@g2gdigital.com` / `demo123`) make it work with no
-configuration; the demo user is seeded as `OWNER` of the demo workspace so every
-screen — settings, integrations, run history — is reachable.
+have. The demo user is seeded as `OWNER` of the demo workspace so every screen —
+settings, integrations, run history — is reachable.
+
+**It is opt-in: `DEMO_LOGIN=true` is required**, and the same predicate gates
+both the seeded account and the rendered panel. Off-by-default matters here
+because the failure mode of the other convention (`!== 'false'`) is silent and
+insecure: any deployment that forgot, misspelled, or never set the variable
+would publish a working login with a password written in the README. Enabling
+therefore requires a re-seed (`pnpm db:seed`) *and* the env var in every file,
+which is the intended amount of friction for publishing a credential. The check
+is the literal string `'true'` — not truthiness — so `DEMO_LOGIN=1` or
+`DEMO_LOGIN=TRUE` cannot accidentally switch it on.
 
 **Trade-off, stated plainly:** a published credential is a real credential. The
 demo account can edit or delete seeded records, and the demo workspace holds a
 live SMTP integration (`hello@g2gdigital.com`). The seeded workflows only send
 Telegram, so nothing is transmitted today, but a visitor could edit a workflow
-to add an `send_email` step — and the public `/api/intake/contact-form` endpoint
+to add a `send_email` step — and the public `/api/intake/contact-form` endpoint
 already triggers workflows for anonymous callers regardless of the demo login.
-Before using this for anything other than a demo, set `DEMO_LOGIN=false` (or
-delete the account) and re-seed to reset the workspace to a known state.
+Before using this for anything other than a demo: leave `DEMO_LOGIN` unset
+(or delete the account) and re-seed to reset the workspace to a known state.
 
 
 

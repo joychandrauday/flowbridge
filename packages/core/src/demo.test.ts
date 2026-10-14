@@ -24,14 +24,15 @@ describe('resolveDemoAccount', () => {
 })
 
 describe('isDemoLoginEnabled', () => {
-  it('is on by default', () => {
-    expect(isDemoLoginEnabled()).toBe(true)
-    expect(isDemoLoginEnabled({})).toBe(true)
+  it('is off unless explicitly enabled — a forgotten env var must not publish a login', () => {
+    expect(isDemoLoginEnabled()).toBe(false)
+    expect(isDemoLoginEnabled({})).toBe(false)
+    expect(isDemoLoginEnabled({ DEMO_LOGIN: 'false' })).toBe(false)
+    expect(isDemoLoginEnabled({ DEMO_LOGIN: '1' })).toBe(false)
+    expect(isDemoLoginEnabled({ DEMO_LOGIN: 'TRUE' })).toBe(false)
   })
 
-  it('is off only for the literal string "false"', () => {
-    expect(isDemoLoginEnabled({ DEMO_LOGIN: 'false' })).toBe(false)
-    expect(isDemoLoginEnabled({ DEMO_LOGIN: 'FALSE' })).toBe(true)
+  it('is on only for the literal string "true"', () => {
     expect(isDemoLoginEnabled({ DEMO_LOGIN: 'true' })).toBe(true)
   })
 })
