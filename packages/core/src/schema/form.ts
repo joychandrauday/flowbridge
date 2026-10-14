@@ -77,7 +77,7 @@ export type FormSettings = z.infer<typeof FormSettingsSchema>
 // ============================================
 
 // Dynamic schema generated from Form.fields
-export function createIntakeSchema(form: Form) {
+export function createIntakeSchema(form: Pick<Form, 'fields' | 'settings'>) {
   const shape: Record<string, z.ZodTypeAny> = {}
 
   for (const field of form.fields) {
@@ -150,7 +150,10 @@ export function validateForm(form: unknown): Form {
   return FormSchema.parse(form)
 }
 
-export function validateIntakeSubmission(form: Form, data: unknown) {
+export function validateIntakeSubmission(
+  form: Pick<Form, 'fields' | 'settings'>,
+  data: unknown
+) {
   const schema = createIntakeSchema(form)
   return schema.safeParse(data)
 }

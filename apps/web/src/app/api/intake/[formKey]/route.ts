@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateIntakeSubmission, type Form } from '@flowbridge/core'
+import { validateIntakeSubmission, FormFieldSchema, FormSettingsSchema, type Form } from '@flowbridge/core'
 import { z } from 'zod'
 import { prisma } from '@flowbridge/db'
 import { Prisma } from '@prisma/client'
@@ -75,8 +75,24 @@ export async function POST(
       return NextResponse.json({ error: 'Form is inactive' }, { status: 403 })
     }
 
-    // Type assertion for form fields and settings
-    const typedForm = form as unknown as Form
+    // Parse the stored config with the same schemas the builder/intake share.
+    // `fields` is arbitrary JSON and `settings` is nullable with no default, so
+    // an unvalidated row would otherwise `null.rateLimit` -> 500. Fail closed.
+    const fieldsResult = z.array(FormFieldSchema).safeParse(form.fields)
+    if (!fieldsResult.success || fieldsResult.data.length === 0) {
+      console.error('Intake error: form has an invalid field config', { formKey })
+      return NextResponse.json({ error: 'Form is misconfigured' }, { status: 422 })
+    }
+
+    const parsedSettings = FormSettingsSchema.safeParse(form.settings ?? {})
+    const settings = parsedSettings.success
+      ? parsedSettings.data
+      : FormSettingsSchema.parse({})
+
+    const typedForm: Pick<Form, 'fields' | 'settings'> = {
+      fields: fieldsResult.data,
+      settings,
+    }
 
     // Rate limiting
     if (typedForm.settings.rateLimit.enabled) {
