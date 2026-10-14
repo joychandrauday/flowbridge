@@ -52,17 +52,37 @@ export const sendTelegramExecutor: StepExecutor = {
       }
     }
 
+    const configData = integration.config as Record<string, unknown>
+
     if (!targetChatId) {
-      const configData = integration.config as Record<string, unknown>
-      targetChatId = configData.defaultChatId as string
+      targetChatId = configData.defaultChatId as string | undefined
+    }
+
+    const botToken = configData.botToken as string | undefined
+
+    // Demo / log-only mode (AGENTS §10). The seed wires a placeholder bot token
+    // so the golden path works offline and CI never calls a real provider. Log
+    // the rendered message and record an activity instead of hitting Telegram.
+    // Real deployments always set a real token, so this branch is demo-only.
+    if (!botToken || botToken === 'log-only-demo-mode') {
+      console.info(`[send_telegram] log-only mode — message:\n${renderedMessage}`)
+      if (lead) {
+        await prisma.activity.create({
+          data: {
+            workspaceId: workspace.id,
+            leadId: lead.id,
+            type: 'telegram_sent',
+            body: 'Telegram message logged (log-only demo mode)',
+            meta: { logOnly: true, chatId: targetChatId ?? null },
+          },
+        })
+      }
+      return { success: true, output: { logOnly: true, chatId: targetChatId ?? null } }
     }
 
     if (!targetChatId) {
       return { success: false, error: 'No Telegram chat ID configured' }
     }
-
-    const configData = integration.config as Record<string, unknown>
-    const botToken = configData.botToken as string
 
     try {
       const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
