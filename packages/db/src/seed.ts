@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client'
 import { deriveEncryptionKey, encryptJsonWithKey } from '@flowbridge/core'
 import { DEMO_WORKFLOWS } from './demo-workflows'
 import { DEMO_FORM } from './demo-form'
+import { buildEmailIntegrationConfig } from './email-integration'
 
 /**
  * Encrypt integration configs for storage (SPEC.md §3).
@@ -244,7 +245,7 @@ async function main() {
 
   console.log('✅ Demo tasks created')
 
-  // Create demo integration (Telegram placeholder)
+  // Create demo integrations: Telegram (placeholder / log-only) + email (from env).
   await prisma.integration.upsert({
     where: { workspaceId_type_name: { workspaceId: workspace.id, type: 'telegram', name: 'Demo Bot' } },
     update: {},
@@ -259,7 +260,24 @@ async function main() {
     },
   })
 
-  console.log('✅ Demo integration created')
+  // Create the email integration from SMTP_* env (see email-integration.ts).
+  // Without an `email` integration the `send_email` executor fails with
+  // "No email integration configured", so email steps never send. Env-driven
+  // and encrypted at rest, so no credential is ever committed. `update: {}`
+  // keeps a UI-configured integration intact on re-seed.
+  const emailConfig = buildEmailIntegrationConfig(process.env)
+  await prisma.integration.upsert({
+    where: { workspaceId_type_name: { workspaceId: workspace.id, type: 'email', name: 'email' } },
+    update: {},
+    create: {
+      workspaceId: workspace.id,
+      type: 'email',
+      name: 'email',
+      configEnc: sealConfig(emailConfig as unknown as Record<string, unknown>),
+    },
+  })
+
+  console.log('✅ Demo integrations created (telegram + email:' + emailConfig.provider + ')')
 
   console.log('🎉 Seeding completed!')
   console.log('')
