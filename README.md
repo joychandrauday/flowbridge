@@ -167,7 +167,8 @@ pnpm dev                    # http://localhost:3000
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | optional | Seeds the workspace `email` integration and acts as its fallback. Set `SMTP_SECURE=true` for implicit TLS (port 465). |
 | `SMTP_PROVIDER` / `RESEND_API_KEY` | optional | Force `smtp` \| `resend` \| `log`; Resend is used when `SMTP_PROVIDER=resend`. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_DEFAULT_CHAT_ID` | optional | Used by the seed's demo bot + as a fallback. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google OAuth. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google OAuth. The sign-in button is rendered **only** when both are set — see [Google sign-in](#google-sign-in) below. |
+| `DEMO_EMAIL` / `DEMO_PASSWORD` / `DEMO_NAME` / `DEMO_LOGIN` | optional | The public demo account shown on the sign-in page. `DEMO_LOGIN=false` hides it. |
 | `NEXT_PUBLIC_APP_URL` | optional | Absolute URL used in embed snippets and lead links. |
 
 Generate a valid `ENCRYPTION_KEY`:
@@ -176,14 +177,50 @@ Generate a valid `ENCRYPTION_KEY`:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
+### Google sign-in
+
+Google is off by default and the sign-in button is hidden until it is fully
+configured (an unconfigured button used to send Google an empty `client_id`,
+which answers `Access blocked … The OAuth client was not found, Error 401:
+invalid_client`). To enable it:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) create/select a
+   project, then **APIs & Services → OAuth consent screen**: User type
+   *External*, fill in the app name and support email, and add yourself under
+   **Test users** (or press *Publish app* to allow anyone).
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
+   application type **Web application**.
+3. Add **Authorised JavaScript origins**: `http://localhost:3000` and your
+   production origin (`https://<your-domain>`).
+4. Add **Authorised redirect URIs** — the path is fixed by Auth.js:
+   `http://localhost:3000/api/auth/callback/google` and
+   `https://<your-domain>/api/auth/callback/google`.
+5. Copy the **Client ID** and **Client secret** into `GOOGLE_CLIENT_ID` /
+   `GOOGLE_CLIENT_SECRET` in `apps/web/.env.local` (local) and in the host's
+   environment variables (e.g. `vercel env add`, or Project → Settings →
+   Environment Variables), then redeploy so the server picks them up.
+
+Common causes of `invalid_client`: the client ID is a leftover placeholder, was
+created in a different project than the secret, was deleted, or the value has
+trailing whitespace/newline. `redirect_uri_mismatch` (a different error) means
+step 4 does not match the URL you are signing in from exactly.
+
 ### Demo credentials (from `pnpm db:seed`)
+
+The **Demo** row is also published on the sign-in page (`DEMO_EMAIL` /
+`DEMO_PASSWORD`, defaulting to the values below) so anyone can explore the
+seeded workspace in one click. It is a `OWNER` of `demo-agency`.
 
 | Role | Email | Password |
 |---|---|---|
+| Demo (public sign-in) | `hello@g2gdigital.com` | `demo123` |
 | Owner (Rafi) | `owner@demo.flowbridge` | `demo123` |
 | Admin (Sam) | `admin@demo.flowbridge` | `demo123` |
 | Agent (Nila) | `agent1@demo.flowbridge` | `demo123` |
 | Agent (Kiran) | `agent2@demo.flowbridge` | `demo123` |
+
+Set `DEMO_LOGIN=false` (in `apps/web/.env.local` and on the host) to hide the
+demo panel before any non-demo deployment.
 
 Seeded workspace slug: **`demo-agency`** · Seeded public form: **`/f/contact-form`**.
 
