@@ -79,7 +79,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Failure notification to the Owner when a run fails: durable `run_failed` activity on the lead + best-effort email/Telegram via the configured integrations (pure message builder unit-tested; engine integration test)
 - [~] Tests: run-history rendering (E2E golden path asserts the run succeeded); retry-replay correctness is covered at the queue level, not yet end-to-end through the retry button
 
-## Phase 6 — Intake breadth (in progress)
+## Phase 6 — Intake breadth ✅
 
 - [x] Webhook intake (`/api/webhooks/[workspaceKey]/[source]`) + HMAC verify over raw body first (`packages/core/src/hmac.ts` + tests)
 - [x] Public hosted form page `/f/[formKey]` (was a broken link — FormsTable copied a nonexistent URL) + shared `PublicForm`
@@ -100,7 +100,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Short-delay integration test (`tests/integration/delay-resume.integration.test.ts`): a 1-minute delay parks the run `WAITING`, schedules a resume job, and finishes `SUCCEEDED` with the post-delay step applied once the (fast-forwarded) job is ticked — the 24h escalation, verified end to end
 - [x] Follow-up escalation integration test (`tests/integration/escalation.integration.test.ts`): a 1-minute `lead.no_activity_for` sweep finds the idle lead, runs create_task (role ADMIN) + update_field to `SUCCEEDED`, and a second tick does not double-escalate (event-id keyed on the activity window)
 
-## Phase 8 — Settings & hardening (in progress)
+## Phase 8 — Settings & hardening ✅
 
 - [x] `/register` page + `/api/register` (done: API + page) — onboarding flow
 - [x] `/onboarding` page + `/api/onboarding` (done: API + page)
@@ -123,7 +123,7 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] `docs/decisions.md` — deviations recorded: `after()` unavailable on Next 14 (drainNow), serialized `pnpm test`, middleware matcher, `scoped()` behaviour, real SMTP, registration/onboarding flow, executor typing, run-step index
 - [x] Update AGENTS.md stale claims (correct `pnpm db:generate`, executor/core split, JobQueue location, `after()` note)
 
-## Phase 10 — Post-audit feature completion (in progress)
+## Phase 10 — Post-audit feature completion ✅
 
 Full audit against `SPEC.md` §2/§4/§9/§10 + `AGENTS.md` §5 found one true MVP gap
 and several polish gaps. Tracked here, fixed in small commits.
@@ -188,6 +188,34 @@ manifest at runtime against a real DB + HTTP layer.
 
 This entry also corrects the Phase 9 tracker, which marked E2E done when it had
 only been written.
+
+## Phase 12 — SMTP integration + Vercel deployment prep ✅
+
+Finalization for launch: make email actually send, and make the app deployable to
+Vercel without hand-editing config.
+
+- [x] **Seeded `email` integration from `SMTP_*` env.** The executor refuses to
+      send without an `email` integration ("No email integration configured"), and
+      the seed had never created one — so email steps could never have worked.
+      Pure `buildEmailIntegrationConfig` (`packages/db/src/email-integration.ts`)
+      + 6 unit tests; config is `smtp` when a host is set, else `log`-only, and is
+      encrypted via `sealConfig` so no credential is committed.
+- [x] **Verified the mailbox for real**: a probe ran nodemailer `verify()` then
+      `sendMail()` against `spark.balancedserver.com:465` (SSL/TLS) — `VERIFY_OK`,
+      `SEND_OK`.
+- [x] **Fixed the env-file split.** The seed runs from `packages/db` and loads
+      `packages/db/.env`; `next dev` loads `apps/web/.env.local`; the root `.env`
+      is read by neither. Editing only the root file made the seed write
+      `localhost:1025`. All three are now synced and documented in the README.
+- [x] **`apps/web/vercel.json`** — `buildCommand` generates the Prisma client
+      before `next build` (Vercel's cache is lockfile-keyed, so the client would
+      otherwise go stale), plus `maxDuration: 60` on the tick and CSV-import
+      functions.
+- [x] **README deployment rewrite** — correct the stale *required* `NEXTAUTH_URL`
+      row, document the three env locations, and give concrete Vercel steps
+      (Root Directory `apps/web`, env vars, `db push` + `seed`, external cron).
+- [x] Recorded the serverless post-intake-drain caveat (the cron tick is the
+      durable path) in README + `docs/decisions.md`.
 
 ---
 

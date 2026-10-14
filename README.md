@@ -138,8 +138,13 @@ flowbridge/
 # 1. Install
 pnpm install
 
-# 2. Configure environment
-cp .env.example .env        # then fill in the values (see below)
+# 2. Configure environment — fill the same values into all three locations
+#    (the monorepo has per-package env files: Prisma CLI + db:seed read
+#     packages/db/.env, `next dev` reads apps/web/.env.local, and the root .env
+#     is for shell tooling / reference).
+cp .env.example .env
+cp .env.example packages/db/.env
+cp .env.example apps/web/.env.local
 
 # 3. Create the schema and seed the demo workspace
 pnpm db:generate
@@ -155,11 +160,12 @@ pnpm dev                    # http://localhost:3000
 | Variable | Required | Notes |
 |---|---|---|
 | `DATABASE_URL` | ✅ | Postgres connection string (pooled URL for the app). Add `pgbouncer=true` when a transaction pooler sits in front (Neon/Supabase/PgBouncer) — the queue's raw claim query otherwise fails with `0A000`. |
-| `NEXTAUTH_SECRET` | ✅ | ≥ 32 random chars. |
-| `NEXTAUTH_URL` | ✅ | e.g. `http://localhost:3000`. |
-| `ENCRYPTION_KEY` | ✅ | 32 bytes, base64. Encrypts integration secrets (AES-256-GCM). |
+| `NEXTAUTH_SECRET` | ✅ | ≥ 32 random chars (Auth.js session signing). |
+| `AUTH_TRUST_HOST` | ✅ hosted | `true` behind a proxy / on Vercel. **Do not** set `NEXTAUTH_URL`/`AUTH_URL` — on Next 14.0.4 + next-auth v5 it 500s every auth route (see `docs/decisions.md`). |
+| `ENCRYPTION_KEY` | ✅ | 32 bytes, base64. Encrypts integration secrets (AES-256-GCM). **Keep it constant across environments** or stored secrets stop decrypting. |
 | `CRON_SECRET` | ✅ | Bearer token for `/api/internal/tick`. |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | optional | Fallback when an email integration uses `smtp`. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_FROM` | optional | Seeds the workspace `email` integration and acts as its fallback. Set `SMTP_SECURE=true` for implicit TLS (port 465). |
+| `SMTP_PROVIDER` / `RESEND_API_KEY` | optional | Force `smtp` \| `resend` \| `log`; Resend is used when `SMTP_PROVIDER=resend`. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_DEFAULT_CHAT_ID` | optional | Used by the seed's demo bot + as a fallback. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | optional | Enables Google OAuth. |
 | `NEXT_PUBLIC_APP_URL` | optional | Absolute URL used in embed snippets and lead links. |
@@ -239,17 +245,52 @@ pnpm --filter @flowbridge/core test:coverage # coverage gate (≥70%)
 
 ---
 
-## Deployment
+## Deploy to Vercel
 
-1. Create a Neon (or any) Postgres database; copy the connection string. If it is
-   a **pooled** URL (Neon's `-pooler` host), append `&pgbouncer=true` — the
-   job-claim query is a prepared statement and transaction poolers otherwise
+FlowBridge is one Next.js app in a pnpm workspace. `apps/web/vercel.json` already
+wires the build (`prisma generate` → `next build`) and the tick function's
+duration, so the steps below are all you need.
+
+1. **Database.** Create a Neon Postgres database and copy the **pooled**
+   connection string (its host contains `-pooler`). Append `&pgbouncer=true` —
+   the job-claim query is a prepared statement and transaction poolers otherwise
    reject it with `cached plan must not change result type`.
-2. Deploy `apps/web` to Vercel; set all required env vars.
-3. Run `pnpm db:generate && pnpm db:push` (or `db:migrate:prod`) and `pnpm db:seed`
-   against the production database.
-4. Create the once-a-minute cron job (above) pointing at the deployed tick URL.
-5. Optional: connect real integrations (Resend/SMTP, Telegram, Slack, Discord) in Settings.
+2. **Import the repo** at [vercel.com/new](https://vercel.com/new). When prompted,
+   set **Root Directory** to `apps/web`. Vercel still installs from the workspace
+   root; leave the build command to `vercel.json`.
+3. **Environment variables** (Project → Settings → Environment Variables) for
+   both Production and Preview:
+
+   | Key | Value |
+   |---|---|
+   | `DATABASE_URL` | the pooled Neon URL (with `&pgbouncer=true`) |
+   | `NEXTAUTH_SECRET` | `openssl rand -base64 32` |
+   | `ENCRYPTION_KEY` | your 32-byte base64 key — **the same value everywhere** |
+   | `CRON_SECRET` | a long random string |
+   | `AUTH_TRUST_HOST` | `true` |
+   | `NEXT_PUBLIC_APP_URL` | `https://<your-app>.vercel.app` |
+
+   Optionally add the `SMTP_*` / `TELEGRAM_*` / `GOOGLE_*` vars. Do **not** add
+   `NEXTAUTH_URL`/`AUTH_URL`.
+4. **Deploy**, then create the schema + demo data against production:
+
+   ```bash
+   DATABASE_URL="<pooled-url>" pnpm --filter @flowbridge/db exec prisma db push
+   DATABASE_URL="<pooled-url>" pnpm --filter @flowbridge/db run db:seed
+   ```
+
+   (`db push` is used because the repo carries no migrations directory; switch to
+   `prisma migrate deploy` once you commit migrations.)
+5. **Schedule the tick.** Vercel Cron on Hobby only fires once per day, so use an
+   external scheduler (cron-job.org, free): `POST
+   https://<your-app>.vercel.app/api/internal/tick` every minute with the
+   `Authorization: Bearer $CRON_SECRET` header. This is the durable processing
+   path — see [Scheduling the tick](#scheduling-the-tick).
+6. Optional: connect real integrations (SMTP/Resend, Telegram, Slack, Discord) in
+   **Settings**.
+
+> **Vercel Hobby is non-commercial.** Use a paid plan or the client's own hosting
+> for real client deployments.
 
 ---
 
@@ -273,6 +314,10 @@ Stated honestly, per the project's own rules:
   assumption; see `docs/decisions.md`).
 - **No `after()` on Next 14.0.4** — the first drain is best-effort; the cron tick
   is the durable path.
+- **On serverless the post-intake drain can be cut short.** The intake handler
+  returns `202` without awaiting any outbound work (SPEC §2.1), and the
+  un-awaited in-process drain may be frozen once the function responds. In
+  production, expect the tick's ~1-minute cadence for the first step too.
 - **Cron expressions are evaluated in UTC** (per-workflow timezones are deferred).
 
 ---

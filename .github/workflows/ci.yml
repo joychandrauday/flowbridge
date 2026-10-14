@@ -55,6 +55,12 @@ jobs:
       - name: Core coverage gate (≥70%)
         run: pnpm --filter @flowbridge/core test:coverage
 
+      - name: Build (Next.js)
+        # Catches deploy-only breakage (edge bundling, bad route export) that
+        # lint/typecheck/unit tests cannot see. DB-backed pages read request
+        # data (auth/cookies) and stay dynamic, so no live database is needed.
+        run: pnpm --filter @flowbridge/web run build
+
   integration:
     name: integration tests (Postgres)
     runs-on: ubuntu-latest

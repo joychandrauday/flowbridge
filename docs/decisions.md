@@ -411,3 +411,59 @@ production too: a large workspace whose sweep is slow would otherwise stop
 processing its queue. The fundamental granularity is unchanged — the sweep and
 the queue both still run every tick.
 
+---
+
+## Finalization (SMTP + Vercel)
+
+### The workspace `email` integration is seeded from `SMTP_*` env
+
+The email executor refuses to send unless an `email` integration exists ("No email
+integration configured"), so a demo workspace had **no working email steps at
+all** — the seed only created the Telegram bot. The seed now also upserts one
+`email` integration whose config is derived from `SMTP_*` by a pure
+`buildEmailIntegrationConfig` (`packages/db/src/email-integration.ts`, unit-tested):
+`smtp` when `SMTP_HOST` is set, otherwise `log`-only (so a bare seed never tries to
+reach `localhost:587`). `SMTP_PROVIDER` forces `smtp|resend|log`; `SMTP_SECURE`
+defaults to `port === 465`. The value is encrypted with `sealConfig` before it is
+stored, so no credential is committed. `update: {}` means a UI-configured
+integration is never clobbered by a re-seed — changing the env afterwards means
+deleting the row (or editing it in Settings) and re-seeding.
+
+### Env is read from per-package files, not one root `.env`
+
+The seed runs from `packages/db`, so Prisma loads `packages/db/.env`; `next dev`
+runs in `apps/web` and loads `apps/web/.env.local`. A root `.env` is **not**
+consulted by either. This bit us directly: the SMTP values were edited only in the
+root file, so the seed wrote `localhost:1025` into the email integration. All
+three locations are now documented in the README, and on Vercel the values come
+from the project's Environment Variables instead. Recommended future cleanup:
+collapse to a single source (e.g. a shared dotenv loader) once a second consumer
+exists.
+
+### Vercel build generates the Prisma client itself
+
+`apps/web/vercel.json` sets `buildCommand` to
+`pnpm --filter @flowbridge/db run db:generate && next build`. Vercel's build cache
+is keyed on the lockfile, not on `schema.prisma`, so a stale generated client
+would otherwise be reused after a schema change; generating inside the build
+avoids the classic Prisma-on-Vercel footgun. The project **Root Directory must be
+`apps/web`** (Vercel still installs from the pnpm workspace root). The tick route's
+duration is pinned (`maxDuration: 60`) even though Hobby now allows 300s, so the
+engine's ~25s budget is never the thing that fails first.
+
+### Vercel Cron on Hobby is once-a-day → the tick uses an external scheduler
+
+Vercel's built-in cron on the free Hobby plan runs at most once per day — far too
+coarse for a 1-minute queue. The durable path remains an external scheduler
+(cron-job.org, free) hitting `POST /api/internal/tick` with
+`Authorization: Bearer CRON_SECRET` every minute. Hobby is also **non-commercial**;
+real client deployments need a paid plan or the client's own hosting.
+
+### On serverless, the post-intake drain is best-effort
+
+The intake handler returns `202` without awaiting `drainNow` (SPEC §2.1 forbids
+inline outbound work). On Vercel the function can be frozen the moment it
+responds, so the in-process drain may not finish. This is by design — the cron
+tick is the durable path — and means production first-step latency is up to
+~1 minute. Documented in the README trade-offs.
+

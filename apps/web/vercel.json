@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "pnpm --filter @flowbridge/db run db:generate && next build",
+  "functions": {
+    "src/app/api/internal/tick/route.ts": { "maxDuration": 60 },
+    "src/app/api/leads/import/route.ts": { "maxDuration": 60 }
+  }
+}
