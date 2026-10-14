@@ -3,6 +3,7 @@ import { hash } from 'bcryptjs'
 import { Prisma } from '@prisma/client'
 import { deriveEncryptionKey, encryptJsonWithKey } from '@flowbridge/core'
 import { DEMO_WORKFLOWS } from './demo-workflows'
+import { DEMO_FORM } from './demo-form'
 
 /**
  * Encrypt integration configs for storage (SPEC.md §3).
@@ -112,25 +113,27 @@ async function main() {
 
   console.log('✅ Members created')
 
-  // Create demo form
+  // Create demo form (definition lives in demo-form.ts so the schema-drift
+  // test can validate it without touching the DB). The `update` branch is
+  // intentionally convergent — unlike workflows — so re-seeding repairs a form
+  // whose stored fields/settings drift from the schema (which would otherwise
+  // 404 the public page and 500 the intake endpoint).
+  const demoFormFields = {
+    name: DEMO_FORM.name,
+    description: DEMO_FORM.description,
+    fields: DEMO_FORM.fields as unknown as Prisma.InputJsonValue,
+    settings: DEMO_FORM.settings as unknown as Prisma.InputJsonValue,
+    successMessage: DEMO_FORM.successMessage,
+    active: DEMO_FORM.active,
+  }
+
   const form = await prisma.form.upsert({
-    where: { key: 'contact-form' },
-    update: {},
+    where: { key: DEMO_FORM.key },
+    update: demoFormFields,
     create: {
       workspaceId: workspace.id,
-      key: 'contact-form',
-      name: 'Contact Form',
-      fields: [
-        { name: 'name', label: 'Full Name', type: 'text', required: true, placeholder: 'John Doe' },
-        { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'john@example.com' },
-        { name: 'phone', label: 'Phone', type: 'tel', required: false, placeholder: '+1 (555) 000-0000' },
-        { name: 'company', label: 'Company', type: 'text', required: false, placeholder: 'Acme Inc.' },
-        { name: 'message', label: 'Message', type: 'textarea', required: true, placeholder: 'How can we help?' },
-        { name: 'hp_field', label: '', type: 'hidden', required: false }, // honeypot
-      ],
-      successMessage: 'Thanks for reaching out! We\'ll get back to you within 24 hours.',
-      redirectUrl: 'https://flowbridge.example.com/thank-you',
-      active: true,
+      key: DEMO_FORM.key,
+      ...demoFormFields,
     },
   })
 
