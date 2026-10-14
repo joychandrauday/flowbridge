@@ -638,8 +638,15 @@ export async function runTick(prisma: PrismaClient, queue: JobQueue, options?: T
   const jobs = await queue.claim(maxJobs)
   let processed = 0
 
+  // The job-processing budget starts *after* the time-trigger sweep. The sweep
+  // creates no-activity/schedule runs and on a slow database can consume the
+  // whole budget; when that happened every claimed job was rescheduled and — on
+  // a deployment with no cron running (local E2E) — never processed at all.
+  // Jobs must always get their own slice of the budget.
+  const jobBudgetStart = Date.now()
+
   for (const job of jobs) {
-    if (Date.now() - startTime > timeBudgetMs) {
+    if (Date.now() - jobBudgetStart > timeBudgetMs) {
       await queue.reschedule(job.id, new Date())
       continue
     }
