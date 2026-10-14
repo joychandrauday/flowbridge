@@ -500,4 +500,47 @@ database region. `nodeVersion` was also pinned to `22.x` (matching local) since
 Vercel now defaults new projects to Node 24, which the pinned Next 14.0.4 was
 never validated against.
 
+### The Google button dead-ended; now it is only rendered when configured
+
+Reported symptom: clicking "Continue with Google" landed on Google's own
+"Access blocked: Authorization Error — The OAuth client was not found
+(Error 401: `invalid_client`)". Cause: the login page rendered the button
+unconditionally while **neither `GOOGLE_CLIENT_ID` nor `GOOGLE_CLIENT_SECRET`
+was set** (verified against the Vercel project — only the six core vars exist
+there). NextAuth therefore sent Google an empty `client_id`.
+
+Fix, two parts:
+1. `login/page.tsx` is now a server component (following the existing
+   `onboarding/page.tsx` + `onboarding-form.tsx` pattern). It reads
+   `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and only renders the Google button
+   when both are present, so an unconfigured deployment can never show a button
+   that only fails. The form itself moved to `login/login-form.tsx`.
+2. Configuring Google is now an explicit, documented step (`.env.example`):
+   create an OAuth 2.0 *Web application* client, add the callback
+   `/api/auth/callback/google` for each origin, and set both vars in every env
+   file plus the host. Setting them turns the button back on with no code change.
+
+### A public demo account, resolved once and shared
+
+The sign-in page now offers a seeded demo login so an evaluator reaches the
+golden path without registering. The account is defined once, in
+`packages/core/src/demo.ts` (`resolveDemoAccount` / `isDemoLoginEnabled`), and
+read by *both* `packages/db/src/seed.ts` and the login page from the same
+`DEMO_EMAIL` / `DEMO_PASSWORD` / `DEMO_NAME` / `DEMO_LOGIN` env vars — the
+alternative (constants duplicated in the seed and the UI) drifts the moment
+either is edited, and the page would advertise a password the database does not
+have. Defaults (`hello@g2gdigital.com` / `demo123`) make it work with no
+configuration; the demo user is seeded as `OWNER` of the demo workspace so every
+screen — settings, integrations, run history — is reachable.
+
+**Trade-off, stated plainly:** a published credential is a real credential. The
+demo account can edit or delete seeded records, and the demo workspace holds a
+live SMTP integration (`hello@g2gdigital.com`). The seeded workflows only send
+Telegram, so nothing is transmitted today, but a visitor could edit a workflow
+to add an `send_email` step — and the public `/api/intake/contact-form` endpoint
+already triggers workflows for anonymous callers regardless of the demo login.
+Before using this for anything other than a demo, set `DEMO_LOGIN=false` (or
+delete the account) and re-seed to reset the workspace to a known state.
+
+
 
