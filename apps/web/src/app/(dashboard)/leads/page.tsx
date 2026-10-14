@@ -99,6 +99,9 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
     sort,
   }
 
+  // Reassignment is an Owner/Admin action (SPEC §3).
+  const canReassign = session.user.role !== 'AGENT'
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -154,6 +157,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Search
             pageSize={PAGE_SIZE}
             params={params}
             assignees={assignees}
+            canReassign={canReassign}
           />
         </CardContent>
       </Card>

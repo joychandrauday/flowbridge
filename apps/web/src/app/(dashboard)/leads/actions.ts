@@ -3,7 +3,7 @@
 import { auth } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@flowbridge/db'
-import { LeadStatus } from '@prisma/client'
+import { LeadStatus, Prisma } from '@prisma/client'
 import { JobQueue } from '@/lib/queue'
 import { createRunsForLeadStatusChange, drainNow } from '@/lib/engine'
 
@@ -151,4 +151,110 @@ export async function updateLeadAssignee(formData: FormData) {
 
   revalidatePath(`/leads/${lead.id}`)
   revalidatePath('/leads')
+}
+
+const MAX_BULK_LEADS = 100
+
+/**
+ * Apply a status and/or assignee change to a set of leads (SPEC §10.2 bulk
+ * actions). Scoped to the session workspace; agents may only change the status
+ * of their own leads and may never reassign. Status changes fire
+ * `lead.status_changed` workflows exactly like the single-lead action.
+ */
+export async function bulkUpdateLeads(formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.id || !session?.user?.workspaceId) return
+  const workspaceId = session.user.workspaceId
+
+  const ids = formData
+    .getAll('leadIds')
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .slice(0, MAX_BULK_LEADS)
+  if (ids.length === 0) return
+
+  const statusRaw = formData.get('status')
+  const status =
+    typeof statusRaw === 'string' && (LEAD_STATUSES as readonly string[]).includes(statusRaw)
+      ? (statusRaw as LeadStatus)
+      : undefined
+
+  const assigneeRaw = formData.get('assigneeId')
+  const assigneeProvided = typeof assigneeRaw === 'string' && assigneeRaw !== ''
+  const assigneeId = assigneeProvided ? (assigneeRaw === '__none__' ? null : assigneeRaw) : undefined
+
+  if (!status && !assigneeProvided) return
+
+  const isAgent = session.user.role === 'AGENT'
+  // Agents cannot reassign leads (SPEC §3).
+  if (isAgent && assigneeProvided) return
+
+  const actor = await prisma.member.findFirst({ where: { userId: session.user.id, workspaceId } })
+
+  // Resolve the target assignee within this workspace — never trust client input.
+  const target = assigneeId
+    ? await prisma.member.findFirst({
+        where: { id: assigneeId, workspaceId },
+        include: { user: true },
+      })
+    : null
+  if (assigneeId && !target) return
+
+  const where: Prisma.LeadWhereInput = { workspaceId, id: { in: ids } }
+  if (isAgent) where.assigneeId = actor?.id ?? '__no_member__'
+
+  const leads = await prisma.lead.findMany({
+    where,
+    select: { id: true, status: true, assigneeId: true, firstContactedAt: true },
+  })
+
+  const queue = new JobQueue(prisma, `worker-bulk-${Date.now()}`)
+
+  for (const lead of leads) {
+    const statusChanged = status !== undefined && lead.status !== status
+    const assigneeChanged = assigneeProvided && lead.assigneeId !== assigneeId
+    if (!statusChanged && !assigneeChanged) continue
+
+    const nextStatus = status as LeadStatus
+
+    await prisma.$transaction(async (tx) => {
+      const data: Prisma.LeadUncheckedUpdateInput = { lastActivityAt: new Date() }
+      if (statusChanged) {
+        data.status = nextStatus
+        data.firstContactedAt = lead.firstContactedAt ?? (nextStatus === 'NEW' ? null : new Date())
+      }
+      if (assigneeChanged) data.assigneeId = assigneeId
+
+      await tx.lead.update({ where: { id: lead.id }, data })
+
+      const activity = await tx.activity.create({
+        data: {
+          workspaceId,
+          leadId: lead.id,
+          type: statusChanged ? 'status_change' : 'assignment',
+          body: statusChanged
+            ? `Status changed to ${nextStatus}`
+            : target
+              ? `Assigned to ${target.user.name ?? target.user.email}`
+              : 'Lead unassigned',
+          actorId: actor?.id ?? null,
+        },
+      })
+
+      if (statusChanged) {
+        await createRunsForLeadStatusChange(tx, queue, {
+          workspaceId,
+          leadId: lead.id,
+          eventId: `statuschange:${activity.id}`,
+          from: lead.status,
+          to: nextStatus,
+        })
+      }
+    })
+  }
+
+  drainNow(prisma, new JobQueue(prisma, `worker-drain-${Date.now()}`))
+
+  revalidatePath('/leads')
+  revalidatePath('/runs')
+  revalidatePath('/dashboard')
 }
