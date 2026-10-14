@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import {
   ClipboardList,
-  FileText,
   GitBranch,
   LayoutDashboard,
   ListTodo,
