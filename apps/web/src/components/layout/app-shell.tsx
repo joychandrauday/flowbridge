@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/sidebar'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { EngineHeartbeat } from '@/components/layout/engine-heartbeat'
+import { EngineDrain } from '@/components/layout/engine-drain'
 import type { EngineHeartbeat as Heartbeat } from '@/lib/heartbeat'
 
 const NAV_ITEMS = [
@@ -205,6 +206,7 @@ export function AppShell({ user, heartbeat, serverNow, children }: AppShellProps
           <SidebarTrigger open={open} onClick={() => setOpen((v) => !v)} />
           <div className="flex flex-1 items-center justify-end gap-2">
             <EngineHeartbeat heartbeat={heartbeat} serverNow={serverNow} className="hidden md:inline-flex" />
+            <EngineDrain />
             <CommandPalette />
             <ThemeToggle />
           </div>

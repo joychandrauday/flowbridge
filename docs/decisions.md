@@ -657,3 +657,25 @@ edit their own leads; delete is Owner/Admin only.
 ### Tasks can be reopened
 A follow-up that "came back" had no path from `DONE`; added `reopenTask` and an
 **Overdue only** filter on the task list.
+
+### The engine self-heals while the app is open
+The durable path is still the external cron hitting `/api/internal/tick` every
+minute (SPEC §2, AGENTS invariant #2). But that path is invisible, and during
+this audit the external cron silently stopped: six jobs sat `PENDING` for ~45
+minutes with nothing in the UI to say so. For a product whose entire thesis is
+"never silently swallow a failed automation", a stalled scheduler is the worst
+possible blind spot.
+
+Two additions:
+
+- **`POST /api/internal/drain`** — a route that runs the *same* `runTick` (same
+  `FOR UPDATE SKIP LOCKED`, same ~25s budget) for an authenticated
+  OWNER/ADMIN session. It does not add a worker; it is a second trigger for an
+  existing one. Fail-soft: a drain error returns 200 and never breaks the page.
+- **`EngineDrain`** (client) — fires the drain once on mount and then once a
+  minute while a dashboard tab is visible, and calls `router.refresh()` when
+  work was processed so the heartbeat stays true.
+
+Net effect: a cron misconfiguration degrades the product to "work happens when
+you're looking at it" instead of "work silently stops". Agents are excluded
+(403) so only owner/admin sessions can drive the global queue.
