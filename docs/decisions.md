@@ -679,3 +679,22 @@ Two additions:
 Net effect: a cron misconfiguration degrades the product to "work happens when
 you're looking at it" instead of "work silently stops". Agents are excluded
 (403) so only owner/admin sessions can drive the global queue.
+
+### A stalled scheduler is a visible state, not a hidden count
+
+The drain above *recovers* a stalled engine, but the same incident exposed a
+reporting gap: the heartbeat showed `queued: 6` and nothing distinguished that
+from six runs legitimately about to start on the next tick. The owner had no way
+to tell "busy" from "broken".
+
+`EngineHeartbeat` now carries `stalled` (plus `oldestQueuedAgeMs`), computed from
+the **oldest `QUEUED` run**. This is honest because every `QUEUED` run is paired
+with an immediately-available job — only `delay` and retry steps park as
+`WAITING`, so a `WAITING` run may sit for 24h by design and must *not* count.
+Five missed ticks (`STALL_THRESHOLD_MS`) is unambiguously a stopped consumer.
+
+Precedence in the indicator: **failed** (red, links to failed runs) outranks
+**stalled** (amber, pulsing, links to queued runs) which outranks running /
+queued / idle. The rule is `isEngineStalled`, a pure function (unit-tested
+without a database, `heartbeat.test.ts`) so the threshold behaviour is pinned —
+including that exactly-at-threshold is not stalled.

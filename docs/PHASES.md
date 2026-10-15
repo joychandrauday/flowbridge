@@ -219,6 +219,33 @@ Vercel without hand-editing config.
 
 ---
 
+## Phase 13 — Production audit & engine self-healing ✅
+
+Hardening after the first real deployment, driven by what the live environment
+exposed rather than by the plan.
+
+- [x] **Audit fixes** — `Lead.email` no longer globally unique; `assign` no longer
+      flips status to `CONTACTED`; persisted round-robin (`Workflow.assignmentPointer`);
+      intake creates-or-updates; `firstContactedAt`/`lastActivityAt` centralized;
+      automated status changes dispatch `lead.status_changed`; run cancellation
+      (`CANCELED`); fail-closed tick auth in production.
+- [x] **Manual lead CRUD** (create/edit/delete) routes through the same intake
+      pipeline, so a hand-added lead records an `IntakeEvent` and fires workflows.
+- [x] **Condition union fix** — the workflow schema now accepts `Condition | ConditionGroup`,
+      so any workflow with a condition can actually be saved.
+- [x] **Dry-run** — pure `simulateWorkflow` + `testWorkflow` server action + editor dialog.
+- [x] **Task reopen** + "Overdue only" filter.
+- [x] **Engine self-healing** — `POST /api/internal/drain` (OWNER/ADMIN) runs the same
+      `runTick`; `EngineDrain` pings it on mount and every 60s while a tab is open.
+      A dead external cron now degrades to "work happens while you're looking at it".
+- [x] **Stalled engine is a visible state** — `EngineHeartbeat.stalled` +
+      `oldestQueuedAgeMs` from the oldest `QUEUED` run (pure `isEngineStalled`,
+      unit-tested). The indicator is red for failures, amber and pulsing for a
+      stalled queue, and links straight to the affected runs.
+- [x] Documented in `docs/decisions.md` (audit section, drain rationale, stalled rule).
+
+---
+
 ## Cross-cutting
 
 - [x] `pnpm typecheck && pnpm lint && pnpm test` green after **every** phase (verified before each push)

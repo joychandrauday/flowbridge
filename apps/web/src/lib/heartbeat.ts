@@ -21,27 +21,66 @@ export interface EngineHeartbeat {
   running: number
   /** Runs queued or waiting for a delay to elapse. */
   queued: number
+  /** Runs strictly in `QUEUED` — the ones a tick should claim immediately. */
+  queuedNow: number
   /** Runs that failed in the last 24 hours — the number that must never hide. */
   failed24h: number
-  /** Most recent run activity, used for the "last activity" readout. */
+  /**
+   * A queued run has been waiting far longer than one tick should ever take.
+   * The queue is not just busy — the consumer has stopped draining it.
+   */
+  stalled: boolean
+  /** Age of the oldest `QUEUED` run, for the tooltip. Null when nothing is queued. */
+  oldestQueuedAgeMs: number | null
+  /** When the engine last touched any run in this workspace. */
   lastActivityAt: Date | null
+}
+
+/**
+ * A `QUEUED` run is claimed within one ~1-minute tick (the job is enqueued with
+ * no delay — only delay/retry steps park as `WAITING`). Five missed ticks is
+ * therefore not "busy", it is a stopped scheduler, and it must be loud.
+ */
+export const STALL_THRESHOLD_MS = 5 * 60 * 1000
+
+/**
+ * Pure so the rule is testable without a database. `null` (nothing queued) is
+ * never stalled, and `now` is injected so the caller's clock wins.
+ */
+export function isEngineStalled(
+  oldestQueuedAt: Date | null,
+  now: number,
+  thresholdMs: number = STALL_THRESHOLD_MS
+): boolean {
+  if (!oldestQueuedAt) return false
+  return now - oldestQueuedAt.getTime() > thresholdMs
 }
 
 export const EMPTY_HEARTBEAT: EngineHeartbeat = {
   running: 0,
   queued: 0,
+  queuedNow: 0,
   failed24h: 0,
+  stalled: false,
+  oldestQueuedAgeMs: null,
   lastActivityAt: null,
 }
 
 export async function getEngineHeartbeat(workspaceId: string): Promise<EngineHeartbeat> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000)
+  const now = Date.now()
   try {
-    const [running, queued, failed24h, last] = await Promise.all([
+    const since = new Date(now - 24 * 60 * 60 * 1000)
+    const [running, queued, queuedNow, failed24h, oldestQueued, last] = await Promise.all([
       prisma.workflowRun.count({ where: { workspaceId, status: 'RUNNING' } }),
       prisma.workflowRun.count({ where: { workspaceId, status: { in: ['QUEUED', 'WAITING'] } } }),
+      prisma.workflowRun.count({ where: { workspaceId, status: 'QUEUED' } }),
       prisma.workflowRun.count({
         where: { workspaceId, status: 'FAILED', finishedAt: { gte: since } },
+      }),
+      prisma.workflowRun.findFirst({
+        where: { workspaceId, status: 'QUEUED' },
+        orderBy: { updatedAt: 'asc' },
+        select: { updatedAt: true },
       }),
       prisma.workflowRun.findFirst({
         where: { workspaceId },
@@ -49,7 +88,17 @@ export async function getEngineHeartbeat(workspaceId: string): Promise<EngineHea
         select: { updatedAt: true },
       }),
     ])
-    return { running, queued, failed24h, lastActivityAt: last?.updatedAt ?? null }
+
+    const oldestQueuedAt = oldestQueued?.updatedAt ?? null
+    return {
+      running,
+      queued,
+      queuedNow,
+      failed24h,
+      stalled: isEngineStalled(oldestQueuedAt, now),
+      oldestQueuedAgeMs: oldestQueuedAt ? now - oldestQueuedAt.getTime() : null,
+      lastActivityAt: last?.updatedAt ?? null,
+    }
   } catch {
     return EMPTY_HEARTBEAT
   }

@@ -14,6 +14,14 @@ import type { EngineHeartbeat as Heartbeat } from '@/lib/heartbeat'
  * fact outranks everything else and turns the whole indicator red and clickable.
  * A quiet engine is a calm indicator; a broken engine is impossible to miss.
  *
+ * There are two ways the engine can be broken, and they are deliberately ranked
+ * differently:
+ *   - **failed** — a run ran and broke. Red, outranks everything.
+ *   - **stalled** — nothing is even running: a queued run has outlived several
+ *     ticks, so the consumer itself has stopped (a dead cron, in practice). This
+ *     is what silently happened in production, so it is amber-pulsing and links
+ *     to the stuck runs rather than pretending to be ordinary "queued" work.
+ *
  * `serverNow` is passed in rather than read from the client clock so the first
  * client render matches the server render exactly (no hydration mismatch), and
  * only then does it start ticking.
@@ -32,6 +40,9 @@ function formatAgo(ms: number): string {
 
 const TICK_HINT =
   'FlowBridge runs on a one-minute tick. Queued work and delayed steps start within about a minute.'
+
+const STALL_HINT =
+  'Queued runs have not moved for several minutes — the scheduler looks stopped. An open Owner/Admin session drains the queue automatically; otherwise check that the cron is still calling /api/internal/tick.'
 
 export function EngineHeartbeat({
   heartbeat,
@@ -52,13 +63,15 @@ export function EngineHeartbeat({
   }, [])
 
   const failed = heartbeat.failed24h > 0
+  const stalled = !failed && heartbeat.stalled
   const busy = heartbeat.running > 0
   const queued = heartbeat.queued > 0
 
-  const tone = failed ? 'danger' : busy ? 'progress' : queued ? 'attention' : 'idle'
+  const tone = failed ? 'danger' : stalled ? 'stalled' : busy ? 'progress' : queued ? 'attention' : 'idle'
 
   const lampClass = {
     danger: 'bg-destructive animate-flow-pulse',
+    stalled: 'bg-amber-500 animate-flow-pulse',
     progress: 'bg-brand animate-flow-pulse',
     attention: 'bg-amber-500',
     idle: 'bg-muted-foreground/50',
@@ -66,6 +79,7 @@ export function EngineHeartbeat({
 
   const shellClass = {
     danger: 'border-destructive/40 bg-destructive/10 text-destructive hover:border-destructive/60',
+    stalled: 'border-amber-500/50 bg-amber-500/10 text-amber-700 hover:border-amber-500/70 dark:text-amber-400',
     progress: 'border-border bg-card text-foreground',
     attention: 'border-border bg-card text-foreground',
     idle: 'border-border bg-card text-muted-foreground',
@@ -74,6 +88,9 @@ export function EngineHeartbeat({
   const activity = heartbeat.lastActivityAt
     ? formatAgo(now - new Date(heartbeat.lastActivityAt).getTime())
     : null
+
+  const stalledFor =
+    heartbeat.oldestQueuedAgeMs != null ? formatAgo(heartbeat.oldestQueuedAgeMs) : null
 
   const body = (
     <>
@@ -84,6 +101,8 @@ export function EngineHeartbeat({
             <span className="metric font-semibold">{heartbeat.failed24h}</span>
             <span className="font-medium">failed</span>
           </>
+        ) : stalled ? (
+          <span className="font-medium">Engine stalled</span>
         ) : busy ? (
           <>
             <span className="metric font-semibold">{heartbeat.running}</span>
@@ -98,7 +117,7 @@ export function EngineHeartbeat({
           <span className="font-medium">Engine idle</span>
         )}
       </span>
-      {!failed && activity ? (
+      {!failed && !stalled && activity ? (
         <>
           <span aria-hidden="true" className="text-border">
             ·
@@ -110,6 +129,9 @@ export function EngineHeartbeat({
         </>
       ) : null}
       {failed ? <span className="hidden whitespace-nowrap lg:inline">in 24h</span> : null}
+      {stalled && stalledFor ? (
+        <span className="metric hidden whitespace-nowrap lg:inline">for {stalledFor}</span>
+      ) : null}
     </>
   )
 
@@ -124,6 +146,18 @@ export function EngineHeartbeat({
     return (
       <Link href="/runs?status=FAILED" className={cn(base, 'focus-visible:outline-none')} title={TICK_HINT}>
         <span className="sr-only">Failed runs need attention. View failed runs.</span>
+        {body}
+      </Link>
+    )
+  }
+
+  if (stalled) {
+    return (
+      <Link href="/runs?status=QUEUED" className={cn(base, 'focus-visible:outline-none')} title={STALL_HINT}>
+        <span className="sr-only">
+          The automation engine looks stalled: {heartbeat.queuedNow} queued run
+          {heartbeat.queuedNow === 1 ? '' : 's'} not moving. View queued runs.
+        </span>
         {body}
       </Link>
     )

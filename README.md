@@ -7,6 +7,10 @@ Self-hosted, free-tier friendly, **no Redis, no always-on worker, no VPS**.
 FlowBridge exists to eliminate silent automation failures: every run, step,
 retry and error is visible, and a failed automation is never swallowed.
 
+**Live demo:** <https://flowbridge-six.vercel.app> — sign in with
+`hello@g2gdigital.com` / `demo123` (Owner). The full seeded team is listed under
+*Demo credentials* below.
+
 ---
 
 ## Features (MVP)
